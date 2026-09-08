@@ -11,13 +11,13 @@ All probabilities are from the home team's perspective.
 |-----------------------|--------|--------|
 | always predict 0.5    | 0.5000 | 0.6931 |
 | always pick home team | 0.5631 | —      |
-| Elo (tuned, MOV)      | 0.6406 | 0.6310 |
+| Elo (tuned, MOV)      | 0.6413 | 0.6309 |
 | Vegas closing line    | 0.6611 | 0.6140 |
 
-Elo closes ~78% of the gap in log loss between an uninformed prediction and
+Elo closes ~79% of the gap in log loss between an uninformed prediction and
 the market, using nothing but who played whom and who won.
 
-theta* = (k=20, H=50, rho=0.50, mov=True), interior on all three axes.
+theta* = (k=20, rolling H, rho=0.50, mov=True)
 
 ## Settled
 
@@ -26,8 +26,9 @@ for fairness; the MOV multiplier averages ~2.5, which drops optimal k from 48
 to 20.
 
 **rho wants 0.50, not 0.33.** FiveThirtyEight's NFL Elo uses 0.33 offseason
-reversion. This data prefers 0.50 consistently across the grid — more
-forgetting between seasons. Interior optimum, not a boundary.
+reversion. This data prefers 0.50 in every run — more forgetting between
+seasons. The most strongly identified of the three parameters: 0.50 wins the
+top five rows of every tuning block.
 
 **Relocations must be merged.** nflverse uses distinct codes before and after
 a franchise moves (STL to LA, SD to LAC, OAK to LV). Unmerged, three phantom
@@ -35,10 +36,10 @@ teams converge to exactly 1500 and the surviving franchises lose their
 pre-move history. Merged on the grounds that ratings measure roster and
 coaching continuity rather than venue — a judgment call, not an obvious one.
 
-**Calibration is good.** Predicted vs actual agree within 0.035 in every
-bucket, and within 0.017 across the three largest buckets (4,754 of 7,276
-games). The largest deviation is in the smallest bucket (n=367), where 0.035
-is ~1.5 SE — not significant. Measured in-sample; see Held-out evaluation.
+**Calibration is good.** Predicted vs actual agree within 0.028 in every
+bucket and within 0.010 in the four largest (5,776 of 7,276 games). The
+largest deviation is in the smallest bucket (n=399), about 1.1 SE — not
+significant.
 
 **Late-season exclusion does NOT help.** 15 of the 20 largest disagreements
 with the closing line are Week 16–18 games, where seeding is locked and
@@ -49,39 +50,64 @@ Most late games still involve teams competing, so blanket exclusion costs
 more signal than the rested-starter games add noise. The right fix is a
 clinch-status feature, which needs standings and tiebreaker logic.
 
+## Home-field advantage collapsed after 2020
+
+Estimating H per season from the prior 5 seasons' home-win rate:
+
+| season | H    |
+|--------|------|
+| 2000   | 69.3 |
+| 2008   | 52.2 |
+| 2015   | 51.1 |
+| 2019   | 50.1 |
+| 2020   | 42.6 |
+| 2021   | 36.3 |
+| 2022   | 27.2 |
+| 2024   | 22.7 |
+| 2025   | 26.4 |
+
+Stable near 50 for fifteen years, then a sharp drop from 2020 onward. Home
+field is now worth roughly a third of its 2000 value. The timing coincides
+with the empty-stadium 2020 season, and it has not recovered.
+
+Note this is a level shift, not a gradual trend, so a rolling average is an
+imperfect tool — it smears the discontinuity across several seasons. An
+explicit break at 2020 would fit the actual shape better and is untested.
+
 ## Held-out evaluation
 
-Hyperparameters were originally tuned on the same 7,276 games used for
-evaluation, so 0.6310 is the best of many attempts on that dataset and is
-optimistically biased. Measured directly by tuning on games through 2018 and
-scoring only 2019–2025:
+Hyperparameters are chosen as the best of hundreds of trials on the scoring
+set, so an in-sample L is optimistically biased. Measured by tuning on games
+through 2018 and scoring only 2019–2025 (1,960 games):
 
-| scoring set              | Acc    | L      |
-|--------------------------|--------|--------|
-| in-sample (all games)    | 0.6406 | 0.6310 |
-| held out (2019+, n=1960) | 0.6342 | 0.6399 |
+| model      | in-sample L | held-out L | gap    |
+|------------|-------------|------------|--------|
+| fixed H    | 0.6310      | 0.6399     | 0.0089 |
+| rolling H  | 0.6309      | 0.6366     | 0.0056 |
 
-Gap: 0.0089. Most of it looks like era shift rather than overfitting:
+**The main finding: a feature worth nothing in-sample was worth 0.0033 out of
+sample.** Rolling H improves in-sample L by 0.0001 — indistinguishable from
+noise, and it would have been discarded on that evidence. Held out, it cuts
+the generalization gap by more than a third. A constant H fit across 26
+seasons is a fine compromise *for those seasons*; it fails only when asked to
+predict a period whose home-field advantage differs from the historical
+average, and that failure is invisible in-sample.
 
-- **Hyperparameters are stable across training windows.** Tuning on 1999–2018
-  and on 2012–2018 selected the identical theta (k=24, H=60, rho=0.50).
-  Overfitting to noise would move them.
-- **The difference is concentrated in H.** Pre-2019 data wants H=60; the full
-  dataset wants H=50. Home-field advantage fell after roughly 2015, so one
-  constant H fit on older seasons is miscalibrated for recent ones.
+This also confirms the era-shift explanation for the gap. The remaining
+0.0056 is some mix of residual era effects and genuine selection bias.
 
-The honest out-of-sample figure is L 0.6399, and it should be read alongside
-0.6310 rather than in place of it — the in-sample number is what's comparable
-to published Elo results, which are also tuned in-sample.
+**Hyperparameters are stable across training windows.** Tuning on 1999–2018
+and on 2012–2018 selected the identical theta (k=24, H=60, rho=0.50).
+Overfitting to noise would move them.
 
-Caveat on the design: because both training windows produced the same theta,
-the 1999-2018 vs 2012-2018 comparison could not separate era shift from
-selection bias as intended. The stability itself is the finding.
+**Window length is weakly identified.** The held-out rolling grid returns
+L = 0.6289 for windows of 5, 8, and 12 alike — identical to four decimals. In
+sample the spread is 0.0001. The model cares that H moves, not how fast, so
+the specific window value should not be read as a tuned optimum.
 
 ## Not yet tried
 
-- Season-varying home-field advantage — H is one constant across 26 seasons,
-  but the held-out test shows it should differ by era
+- Explicit level shift in H at 2020 rather than a rolling average
 - QB adjustment (roster data) — likely the largest remaining gain
 - Rest days and travel distance
 - Separate offensive and defensive ratings
