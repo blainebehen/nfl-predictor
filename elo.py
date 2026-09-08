@@ -7,8 +7,10 @@ from data import load_games
 # ---------------------------------------------------------------- grids
 # Theta = K_GRID x H_GRID x RHO_GRID, the set of hyperparameters searched.
 K_GRID = [4, 6, 8, 10, 14, 20, 24, 28, 32, 36, 44, 48, 56, 64, 80]
-H_GRID = [20, 30, 40, 50, 60]
+H_GRID = [20, 30, 40, 50, 60, 70, 80]
 RHO_GRID = [0.0, 0.15, 0.33, 0.5, 0.7]
+
+TEST_START = 2019   # held-out evaluation window: this season onward
 
 
 def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False):
@@ -24,7 +26,8 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False):
     M          margin-of-victory multiplier on k (1.0 when mov=False)
     skip_late  if True, still predict REG weeks 17-18 but don't learn from
                them -- those games are contaminated by teams resting
-               starters once playoff seeding is locked
+               starters once playoff seeding is locked. Tested and
+               rejected (see RESULTS.md); kept for reproducibility.
     """
     R = defaultdict(lambda: 1500.0)
     E_all, S_all = [], []
@@ -64,8 +67,6 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False):
         S_all.append(S)
 
         # --- 4. update -----------------------------------------------
-        # Skip learning from rested-starter games if requested. Playoffs
-        # (game_type != 'REG') are always learned from.
         if skip_late and g.game_type == 'REG' and g.week >= 17:
             continue
 
@@ -113,15 +114,35 @@ def L(E, S):
     return -(S * np.log(E) + (1 - S) * np.log(1 - E)).mean()
 
 
-def tune(games, mov, skip_late):
-    """Evaluate L at every theta in the grid; return sorted best-first."""
+def season_mask(games, min_season=None, max_season=None):
+    """Boolean mask selecting games within a season window."""
+    m = np.ones(len(games), dtype=bool)
+    if min_season is not None:
+        m &= (games.season >= min_season).values
+    if max_season is not None:
+        m &= (games.season <= max_season).values
+    return m
+
+
+def tune(games, mov=True, skip_late=False, min_season=None, max_season=None):
+    """
+    Evaluate L at every theta in the grid; return sorted best-first.
+
+    min_season / max_season restrict SCORING to that window while the
+    ratings still walk the full history -- Elo needs continuous history,
+    so the holdout is on which games get a vote in choosing theta, not on
+    which games build the ratings.
+    """
+    window = season_mask(games, min_season, max_season)
+
     results = []
     for k in K_GRID:
         for H in H_GRID:
             for rho in RHO_GRID:
                 E, S, _ = run_elo(games, k=k, H=H, rho=rho,
                                   mov=mov, skip_late=skip_late)
-                results.append((L(E, S), Accuracy(E, S), k, H, rho))
+                Ew, Sw = E[window], S[window]
+                results.append((L(Ew, Sw), Accuracy(Ew, Sw), k, H, rho))
     results.sort()
     return results
 
@@ -148,23 +169,33 @@ def report(label, results):
 if __name__ == '__main__':
     games = load_games()
 
-    # Both variants use MOV (settled earlier: it beats no-MOV by 0.0059).
-    # Each is tuned on its own grid so the comparison is fair.
-    base = tune(games, mov=True, skip_late=False)
-    late = tune(games, mov=True, skip_late=True)
+    # --- in-sample: tune and score on everything ----------------------
+    # Optimistically biased (best of many attempts on the same games),
+    # but this is the number comparable to published Elo results.
+    full = tune(games, mov=True)
+    report('tuned on all games', full)
+    _, _, k_full, H_full, rho_full = full[0]
 
-    report('mov', base)
-    report('mov + skip late', late)
-    print(f'\nimprovement in L from skipping late games: '
-          f'{base[0][0] - late[0][0]:+.4f}')
+    # --- held-out comparisons -----------------------------------------
+    # Two training windows, same test period. The long window spans an
+    # era shift (home-field advantage fell after ~2015); the short one
+    # does not. Comparing the two gaps separates era shift from the
+    # selection bias of picking the best of many hyperparameter trials.
+    test = season_mask(games, min_season=TEST_START)
+    print(f'\nheld-out test window: {TEST_START}+, {test.sum()} games')
 
-    # theta* = argmin over the better of the two variants
-    best = late if late[0][0] < base[0][0] else base
-    use_skip = best is late
-    _, _, k_star, H_star, rho_star = best[0]
+    for label, min_s in [('1999-2018', None), ('2012-2018', 2012)]:
+        res = tune(games, mov=True, min_season=min_s, max_season=TEST_START - 1)
+        report(f'tuned on {label}', res)
+        _, _, k_t, H_t, rho_t = res[0]
 
-    E, S, R = run_elo(games, k=k_star, H=H_star, rho=rho_star,
-                      mov=True, skip_late=use_skip)
+        E_t, S_t, _ = run_elo(games, k=k_t, H=H_t, rho=rho_t, mov=True)
+        print(f'  test: Acc {Accuracy(E_t[test], S_t[test]):.4f}  '
+              f'L {L(E_t[test], S_t[test]):.4f}  '
+              f'(in-sample L {full[0][0]:.4f})')
+
+    # --- everything below uses the fully-tuned model ------------------
+    E, S, R = run_elo(games, k=k_full, H=H_full, rho=rho_full, mov=True)
 
     # --- Vegas benchmark ---------------------------------------------
     # spread_line is the market's predicted margin (positive = home
@@ -202,9 +233,7 @@ if __name__ == '__main__':
 
     print(f'\nbaseline (always home)  Acc {(S > 0.5).mean():.4f}')
     print(f'elo at theta*           Acc {Accuracy(E, S):.4f}  L {L(E, S):.4f}')
-    print(f'theta* = (k={k_star}, H={H_star}, rho={rho_star}, '
-          f'skip_late={use_skip})\n')
+    print(f'theta* = (k={k_full}, H={H_full}, rho={rho_full})\n')
 
     for team, rating in sorted(R.items(), key=lambda x: -x[1]):
         print(f'  {team} {rating:.0f}')
-        
