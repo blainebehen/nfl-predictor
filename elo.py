@@ -194,9 +194,11 @@ def report(label, results, cols=('k', 'H', 'rho')):
 if __name__ == '__main__':
     games = load_games()
 
-    # --- what the rolling H actually looks like -----------------------
+    # --- what the rolling H looks like --------------------------------
     # Each season's value comes from the prior 5 seasons' home-win rate.
-    # Stable near 50 through 2019, then a sharp drop from 2020 onward.
+    # NOTE: this smoothed view once suggested a permanent collapse after
+    # 2020. The raw per-season rates (hfa_trend.py) show a 2019-2021 dip
+    # that recovered -- the "collapse" was the window lagging that dip.
     hfa5 = rolling_hfa(games, window=5)
     print('rolling H, each season from the prior 5 seasons:')
     for s in sorted(hfa5):
@@ -210,10 +212,10 @@ if __name__ == '__main__':
     report('rolling H, in-sample', roll, cols=('k', 'win', 'rho'))
     print(f'\nimprovement in L from rolling H: {fixed[0][0] - roll[0][0]:+.4f}')
 
-    # --- does rolling H close the held-out gap? -----------------------
-    # In-sample the two are indistinguishable. The question is whether a
-    # season-varying H transfers better to a period whose home-field
-    # advantage differs from the historical average.
+    # --- which transfers better to unseen seasons? --------------------
+    # In-sample the two are indistinguishable. The test window opens on
+    # the depressed 2019-2021 seasons, which a rolling H can adapt to
+    # and a fixed H cannot.
     test = season_mask(games, min_season=TEST_START)
     print(f'\n{"=" * 60}')
     print(f'held-out test: {TEST_START}+, {test.sum()} games')

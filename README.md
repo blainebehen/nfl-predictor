@@ -25,26 +25,21 @@ the market, using nothing but who played whom and who won. The model is well
 calibrated: bucketed by predicted probability, predicted and observed win
 rates agree within 0.010 across the buckets holding most of the games.
 
-## Home-field advantage collapsed after 2020
+## A feature that only shows up out of sample
 
-Estimating home-field advantage per season from the prior five seasons'
-home-win rate:
+Letting home-field advantage vary by season — estimated from the prior five
+seasons' home-win rate — is worth +0.0001 in-sample, which is nothing. Held
+out on 2019-2025 it is worth +0.0033 and cuts the generalization gap by more
+than a third.
 
-| season | H    |
-|--------|------|
-| 2000   | 69.3 |
-| 2015   | 51.1 |
-| 2019   | 50.1 |
-| 2021   | 36.3 |
-| 2024   | 22.7 |
+The test window opens on 2019-2021, three seasons where home-field advantage
+dipped well below its historical level (.512 against a .573 baseline). An
+adaptive H tracks that; a constant fit on 1999-2018 cannot. In-sample
+evaluation alone would have discarded the feature.
 
-Stable near 50 rating points for fifteen years, then a sharp drop from 2020
-onward — home field is now worth roughly a third of its 2000 value.
-
-Letting H vary by season is worth +0.0001 in-sample, which is nothing. Held
-out on 2019-2025, it is worth +0.0033 and cuts the generalization gap by more
-than a third. It is a feature that in-sample evaluation would have discarded.
-RESULTS.md has the full comparison.
+RESULTS.md has the full comparison, plus a correction: an earlier version of
+this analysis read the dip as a permanent collapse, which the raw per-season
+rates do not support — 2022-2025 recovered to .552.
 
 ## Files
 
@@ -52,11 +47,11 @@ RESULTS.md has the full comparison.
   franchises, sorts chronologically
 - elo.py — the model, hyperparameter search, held-out evaluation,
   calibration check, and Vegas benchmark
+- hfa_trend.py — raw home-win rate by season, unsmoothed
 - predict.py — forecasts upcoming games from the current ratings
 - score.py — joins actual results onto saved predictions and scores them
   against the closing spread
-- RESULTS.md — findings log, including negative results and known
-  limitations
+- RESULTS.md — findings log, including negative results and corrections
 
 ## Running it
 

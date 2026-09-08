@@ -50,29 +50,32 @@ Most late games still involve teams competing, so blanket exclusion costs
 more signal than the rested-starter games add noise. The right fix is a
 clinch-status feature, which needs standings and tiebreaker logic.
 
-## Home-field advantage collapsed after 2020
+## Home-field advantage: a dip, not a collapse
 
-Estimating H per season from the prior 5 seasons' home-win rate:
+An earlier version of this file claimed home-field advantage collapsed after
+2020 and stayed low, based on the smoothed rolling-H table. **That claim was
+wrong.** The raw per-season home-win rates (hfa_trend.py):
 
-| season | H    |
-|--------|------|
-| 2000   | 69.3 |
-| 2008   | 52.2 |
-| 2015   | 51.1 |
-| 2019   | 50.1 |
-| 2020   | 42.6 |
-| 2021   | 36.3 |
-| 2022   | 27.2 |
-| 2024   | 22.7 |
-| 2025   | 26.4 |
+| period    | home-win rate |
+|-----------|---------------|
+| 1999–2018 | 0.573         |
+| 2019–2021 | 0.512         |
+| 2022–2025 | 0.552         |
 
-Stable near 50 for fifteen years, then a sharp drop from 2020 onward. Home
-field is now worth roughly a third of its 2000 value. The timing coincides
-with the empty-stadium 2020 season, and it has not recovered.
+2019, 2020 and 2021 came in at .521, .498 and .516, then 2022–2025 recovered
+to .563, .565, .547, .533. A three-season dip, not a regime change.
 
-Note this is a level shift, not a gradual trend, so a rolling average is an
-imperfect tool — it smears the discontinuity across several seasons. An
-explicit break at 2020 would fit the actual shape better and is untested.
+The smoothed table showed 2024 at H = 22.7 because the 5-season window was
+still carrying 2019–2021 long after those seasons had passed. The apparent
+collapse was the smoother lagging a dip that had already ended.
+
+Two lessons worth keeping. First, look at the raw series before theorising
+about a smoothed one. Second, 1999–2018 is noisier than it looks — individual
+seasons range from .539 to .614 with no trend, and per-season standard error
+is about 0.030, so most of that range is scatter.
+
+A stepped-H variant (separate H either side of a 2020 break) was written and
+then discarded once the raw rates showed there is no break to model.
 
 ## Held-out evaluation
 
@@ -85,16 +88,16 @@ through 2018 and scoring only 2019–2025 (1,960 games):
 | fixed H    | 0.6310      | 0.6399     | 0.0089 |
 | rolling H  | 0.6309      | 0.6366     | 0.0056 |
 
-**The main finding: a feature worth nothing in-sample was worth 0.0033 out of
-sample.** Rolling H improves in-sample L by 0.0001 — indistinguishable from
-noise, and it would have been discarded on that evidence. Held out, it cuts
-the generalization gap by more than a third. A constant H fit across 26
-seasons is a fine compromise *for those seasons*; it fails only when asked to
-predict a period whose home-field advantage differs from the historical
-average, and that failure is invisible in-sample.
+**A feature worth nothing in-sample was worth 0.0033 out of sample.** Rolling
+H improves in-sample L by 0.0001 — indistinguishable from noise, and it would
+have been discarded on that evidence alone. Held out it cuts the
+generalization gap by more than a third.
 
-This also confirms the era-shift explanation for the gap. The remaining
-0.0056 is some mix of residual era effects and genuine selection bias.
+The mechanism, correctly stated: the test window opens on the depressed
+2019–2021 seasons. A rolling H adapts to them; a constant H fit on 1999–2018
+cannot. This is not evidence of a permanent shift in home-field advantage —
+just that an adaptive parameter handles an unusual stretch better than a
+fixed one.
 
 **Hyperparameters are stable across training windows.** Tuning on 1999–2018
 and on 2012–2018 selected the identical theta (k=24, H=60, rho=0.50).
@@ -107,15 +110,21 @@ the specific window value should not be read as a tuned optimum.
 
 ## Not yet tried
 
-- Explicit level shift in H at 2020 rather than a rolling average
 - QB adjustment (roster data) — likely the largest remaining gain
 - Rest days and travel distance
 - Separate offensive and defensive ratings
 - Clinch-status feature for late-season games
+- What drove the 2019–2021 dip. Empty stadiums explain 2020 but not the
+  seasons either side of it.
 
 ## Live predictions
 
-Week 1 2026 predictions committed before kickoff (predictions_2026.csv).
+Week 1 2026 predictions committed before kickoff (predictions_2026.csv),
+generated with the earlier fixed-H theta (k=20, H=50, rho=0.50). They are
+left as committed rather than regenerated — a track record that gets
+rewritten after the fact is not a track record. predict.py should be updated
+to rolling H before Week 2.
+
 score.py joins actual results and reports Acc and L for the model and the
 closing spread on the same games. Sixteen games per week is a small sample —
 the record only becomes informative around midseason.
