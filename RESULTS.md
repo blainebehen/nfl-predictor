@@ -174,10 +174,36 @@ in-sample.
 ## Live predictions
 
 Week 1 2026 predictions committed before kickoff (predictions_2026.csv),
-generated with the pre-QB theta (k=20, H=50, rho=0.50). Left as committed
-rather than regenerated — a track record rewritten after the fact is not a
-track record. predict.py should move to the QB model before Week 2.
+using theta* including the QB adjustment. An earlier pre-QB version of the
+same week is in git history; it was replaced before any game was played, so
+no forecast was revised with knowledge of a result.
 
 score.py joins actual results and reports Acc and L for the model and the
-closing spread on the same games. Sixteen games per week is a small sample —
-the record only becomes informative around midseason.
+closing spread on the same games, with a standard error on accuracy attached.
+Sixteen games has an SE of about 12 points, so a 10-6 week and a 6-10 week
+are both consistent with a 64% model. The record only becomes informative
+around midseason.
+
+### Inferring who starts
+
+The QB adjustment needs to know the starter for an unplayed game, which is
+not in the data. predict.py infers it from two sources: the current season's
+roster says who is on the team, and the previous season's REG week 1-16
+attempts say which of them starts. Attempts are counted wherever the player
+threw them, so a quarterback who changed teams keeps his history — Rodgers on
+Pittsburgh's roster is matched to his New York attempts.
+
+**Weeks 17-18 must be excluded here too.** The naive rule — whoever started
+most recently — picks whoever took snaps in Week 18, which for a team with
+its seed locked is a third-stringer. That put C.Oladokun under center for
+Kansas City and J.Stidham for Denver, moving those games by 80+ rating
+points. Same rested-starter contamination found earlier in the disagreement
+diagnostic, surfacing in a completely different part of the code.
+
+One case the rule cannot fix: a backup who outthrew the starter because the
+starter was injured. San Francisco picks M.Jones over B.Purdy and Cincinnati
+picks J.Flacco over J.Burrow on raw attempts. Those need manual correction
+via STARTER_OVERRIDES, with find_qb.py to look up player ids. Rookies who won
+a camp battle have no attempt history and hit the same problem; predict.py
+prints a warning naming any team whose presumed starter has zero prior
+attempts.

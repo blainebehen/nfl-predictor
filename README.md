@@ -44,6 +44,10 @@ Each quarterback carries a rating: an exponentially-weighted average of his
 EPA per dropback, read before a game and updated after it. The adjustment
 entering the prediction is the difference between the two starters' ratings.
 
+Predicting an unplayed game means guessing who starts, which is inferred from
+the current roster plus last season's attempts — see RESULTS.md, including
+why weeks 17-18 have to be excluded from that inference.
+
 Tested across six held-out windows, each tuned on data strictly preceding it:
 
 | window    | no QB  | with QB | diff    |
@@ -78,7 +82,9 @@ the raw per-season rates do not support.
 - qb_windows.py — the QB adjustment across six held-out windows
 - holdout_windows.py — the same test applied to season-varying home field
 - hfa_trend.py — raw home-win rate by season, unsmoothed
-- predict.py — forecasts upcoming games from the current ratings
+- predict.py — forecasts upcoming games from the current ratings, inferring
+  each team's starting QB from the roster and last season's attempts
+- find_qb.py — looks up QB ids for manual starter overrides
 - score.py — scores saved predictions against results and the closing spread
 - RESULTS.md — findings log, including rejected features and a correction
 
