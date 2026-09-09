@@ -13,6 +13,11 @@ WINDOW_GRID = [3, 5, 8, 12]     # seasons of history behind a rolling H
 
 TEST_START = 2019   # held-out evaluation window: this season onward
 
+# Adopted QB adjustment. Tuned in qb.py, validated across six held-out
+# windows in qb_windows.py -- every window positive, +0.0037 to +0.0121.
+QB_SCALE = 600      # rating points per unit of EPA/dropback
+QB_ALPHA = 0.02     # EWMA rate for a quarterback's rating
+
 
 def rolling_hfa(games, window=5, prior=0.5631):
     """
@@ -29,6 +34,11 @@ def rolling_hfa(games, window=5, prior=0.5631):
     mean predicting games with information that includes those games.
     `prior` is the fallback for the first season, where no history exists
     (the all-time home-win rate).
+
+    TESTED, NOT ADOPTED. theta* uses a fixed H. Across six held-out test
+    windows (holdout_windows.py) this beat a fixed H on exactly one --
+    2019-2021 -- and was within +/-0.0017 or worse on the rest. Kept here
+    so the comparison stays reproducible.
     """
     by_season = games.assign(hw=games.result > 0).groupby('season').hw.mean()
 
@@ -41,7 +51,8 @@ def rolling_hfa(games, window=5, prior=0.5631):
 
 
 def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
-            hfa=None):
+            hfa=None, qb_map=None, qb_scale=0.0, qb_alpha=0.10,
+            qb_beta=0.03, qb_init=0.0):
     """
     Walk the games in chronological order. For each game: predict, record,
     then update. The prediction uses only ratings built from PRIOR games,
@@ -54,6 +65,20 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
     M          margin-of-victory multiplier on k (1.0 when mov=False)
     hfa        optional dict season -> H. When given it overrides the
                constant H, letting home-field advantage vary by era.
+    qb_map     optional dict (game_id, team) -> (player_id, epa_per_dropback)
+               from qb.build_qb_map. Enables the QB adjustment.
+    qb_scale   rating points per unit of EPA/dropback deviation. 0 disables
+               the adjustment even when qb_map is supplied, which is the
+               control condition for measuring whether it helps.
+    qb_alpha   EWMA rate for a quarterback's own rating Q.
+    qb_beta    EWMA rate for a team's starter baseline T. Smaller than
+               alpha on purpose: T should represent what a team normally
+               gets at the position, so it should not chase a backup's
+               couple of starts.
+    qb_init    starting Q for a quarterback with no history, and starting
+               T for a team. League mean EPA/dropback is about 0.042;
+               0.0 is a mild penalty reflecting that debut starters are
+               usually below average. Not tuned.
     skip_late  if True, still predict REG weeks 17-18 but don't learn from
                them. Tested and rejected (see RESULTS.md); kept for
                reproducibility.
@@ -62,6 +87,12 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
     E_all, S_all = [], []
     season = None
     H_now = H
+
+    # QB state: Q is per quarterback, T is per team. Both are EWMAs of
+    # EPA per dropback, read before a game and updated after it.
+    use_qb = qb_map is not None and qb_scale != 0.0
+    Q = defaultdict(lambda: qb_init)
+    T = defaultdict(lambda: qb_init)
 
     for g in games.itertuples():
 
@@ -78,9 +109,22 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
                 H_now = hfa[season]
 
         # --- 1. predict ----------------------------------------------
+        # QB adjustment: how far each team's starter sits from what that
+        # team normally gets, differenced so it enters d as a home edge.
+        # Team Elo already absorbs a franchise's average QB quality, so
+        # only the deviation is new information. Missing QB data (0.3% of
+        # team-games) contributes nothing.
+        adj = 0.0
+        if use_qb:
+            h_qb = qb_map.get((g.game_id, g.home_team))
+            a_qb = qb_map.get((g.game_id, g.away_team))
+            dev_h = Q[h_qb[0]] - T[g.home_team] if h_qb else 0.0
+            dev_a = Q[a_qb[0]] - T[g.away_team] if a_qb else 0.0
+            adj = qb_scale * (dev_h - dev_a)
+
         # d is the linear predictor: rating gap plus a home offset (the
-        # intercept, in logistic-regression terms).
-        d = R[g.home_team] + H_now - R[g.away_team]
+        # intercept, in logistic-regression terms) plus any QB adjustment.
+        d = R[g.home_team] + H_now - R[g.away_team] + adj
 
         # Bradley-Terry in log space, i.e. a sigmoid with base 10:
         #     E = 1 / (1 + 10^(-d/400)) = sigma(c*d),  c = ln(10)/400
@@ -117,6 +161,17 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
         # because dd/dR_a = -1, which is why ratings are zero-sum.
         R[g.home_team] += k * M * (S - E)
         R[g.away_team] -= k * M * (S - E)
+
+        # QB update: move each starter's rating and his team's baseline
+        # toward what he actually did. Same shape as the Elo step -- a
+        # fraction of the way toward the new observation.
+        if use_qb:
+            for qb, team in ((h_qb, g.home_team), (a_qb, g.away_team)):
+                if qb is None:
+                    continue
+                pid, val = qb
+                Q[pid] += qb_alpha * (val - Q[pid])
+                T[team] += qb_beta * (val - T[team])
 
     return np.array(E_all), np.array(S_all), dict(R)
 
@@ -192,6 +247,8 @@ def report(label, results, cols=('k', 'H', 'rho')):
 
 
 if __name__ == '__main__':
+    from qb_data import build_qb_map
+
     games = load_games()
 
     # --- what the rolling H looks like --------------------------------
@@ -199,6 +256,8 @@ if __name__ == '__main__':
     # NOTE: this smoothed view once suggested a permanent collapse after
     # 2020. The raw per-season rates (hfa_trend.py) show a 2019-2021 dip
     # that recovered -- the "collapse" was the window lagging that dip.
+    # holdout_windows.py then showed rolling H only beats a fixed H on
+    # windows containing 2019-2021, so it is not adopted -- see below.
     hfa5 = rolling_hfa(games, window=5)
     print('rolling H, each season from the prior 5 seasons:')
     for s in sorted(hfa5):
@@ -214,8 +273,9 @@ if __name__ == '__main__':
 
     # --- which transfers better to unseen seasons? --------------------
     # In-sample the two are indistinguishable. The test window opens on
-    # the depressed 2019-2021 seasons, which a rolling H can adapt to
-    # and a fixed H cannot.
+    # the depressed 2019-2021 seasons, which a rolling H can adapt to and
+    # a fixed H cannot -- see holdout_windows.py for the same comparison
+    # across five other windows, where the gain largely disappears.
     test = season_mask(games, min_season=TEST_START)
     print(f'\n{"=" * 60}')
     print(f'held-out test: {TEST_START}+, {test.sum()} games')
@@ -237,16 +297,25 @@ if __name__ == '__main__':
           f'Acc {Accuracy(Er[test], Sr[test]):.4f}  '
           f'gap {L(Er[test], Sr[test]) - roll[0][0]:+.4f}')
 
-    # --- final model: whichever won in-sample -------------------------
-    if roll[0][0] < fixed[0][0]:
-        _, _, k_s, w_s, rho_s = roll[0]
-        E, S, R = run_elo(games, k=k_s, rho=rho_s, mov=True,
-                          hfa=rolling_hfa(games, window=w_s))
-        theta = f'k={k_s}, rolling H (window={w_s}), rho={rho_s}'
-    else:
-        _, _, k_s, H_s, rho_s = fixed[0]
-        E, S, R = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True)
-        theta = f'k={k_s}, H={H_s}, rho={rho_s}'
+    # --- final model: fixed H + QB adjustment -------------------------
+    # Rolling H is not adopted. It wins in-sample by 0.0001 and held out
+    # by 0.0033, but holdout_windows.py shows that entire gain sits in the
+    # 2019-2021 window and vanishes elsewhere. A fixed H is simpler and
+    # the evidence does not clear the bar for adding a parameter.
+    #
+    # The QB adjustment IS adopted: it wins all six held-out windows
+    # (qb_windows.py) and both directions agree, which is what separates
+    # it from rolling H.
+    _, _, k_s, H_s, rho_s = fixed[0]
+    qb_map = build_qb_map(games, verbose=False)
+    E, S, R = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True,
+                      qb_map=qb_map, qb_scale=QB_SCALE, qb_alpha=QB_ALPHA)
+    theta = (f'k={k_s}, H={H_s}, rho={rho_s}, '
+             f'qb_scale={QB_SCALE}, qb_alpha={QB_ALPHA}')
+
+    # no-QB reference on the same games, so the header numbers are
+    # directly comparable
+    E0, S0, _ = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True)
 
     # --- Vegas benchmark ---------------------------------------------
     # spread_line is the market's predicted margin (positive = home
@@ -273,6 +342,7 @@ if __name__ == '__main__':
         actual=('S', 'mean')).round(3))
 
     print(f'\nbaseline (always home)  Acc {(S > 0.5).mean():.4f}')
+    print(f'elo, no QB              Acc {Accuracy(E0, S0):.4f}  L {L(E0, S0):.4f}')
     print(f'elo at theta*           Acc {Accuracy(E, S):.4f}  L {L(E, S):.4f}')
     print(f'theta* = ({theta})\n')
 
