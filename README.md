@@ -1,62 +1,90 @@
 # NFL win predictor
 
-An Elo rating model for NFL games, benchmarked against the Vegas closing line.
+An Elo rating model for NFL games, with margin-of-victory scaling and a
+quarterback adjustment, benchmarked against the Vegas closing line.
 
 Each team carries a rating; before every game the rating difference (plus a
-home-field offset) is converted to a win probability, and afterward both
-ratings are updated in proportion to the prediction error. This is stochastic
-gradient descent on log loss for a Bradley-Terry model — see the derivation
-comments in elo.py.
+home-field offset and a QB term) is converted to a win probability, and
+afterward both ratings are updated in proportion to the prediction error.
+This is stochastic gradient descent on log loss for a Bradley-Terry model —
+see the derivation comments in elo.py.
+
+Note this is not vanilla Elo. The margin-of-victory multiplier, offseason
+reversion, and quarterback term are NFL-specific extensions; the QB term is
+what separates these numbers from a textbook implementation.
 
 ## Results
 
-7,276 games, 1999-2025. Every prediction uses only ratings built from prior
-games, so the backtest is walk-forward and leakage-free.
+Held out on 2019-2025 (1,960 games), all parameters tuned on earlier seasons
+only. Every prediction uses only ratings built from prior games, so the
+backtest is walk-forward and leakage-free.
 
 | model                 | Acc    | log loss |
 |-----------------------|--------|----------|
 | always predict 0.5    | 0.5000 | 0.6931   |
 | always pick home team | 0.5631 | —        |
-| this model            | 0.6413 | 0.6309   |
+| Elo + MOV             | 0.6388 | 0.6374   |
+| Elo + MOV + QB        | 0.6449 | 0.6302   |
 | Vegas closing line    | 0.6611 | 0.6140   |
 
-Elo closes about 79% of the log-loss gap between an uninformed prediction and
-the market, using nothing but who played whom and who won. The model is well
-calibrated: bucketed by predicted probability, predicted and observed win
-rates agree within 0.010 across the buckets holding most of the games.
+The model closes about 80% of the log-loss gap between an uninformed
+prediction and the market, and the QB adjustment alone closes 30% of what
+remained. It is well calibrated: bucketed by predicted probability, predicted
+and observed win rates agree within 0.017 across the buckets holding most of
+the games.
 
-## A feature that only shows up out of sample
+## The quarterback adjustment
 
-Letting home-field advantage vary by season — estimated from the prior five
-seasons' home-win rate — is worth +0.0001 in-sample, which is nothing. Held
-out on 2019-2025 it is worth +0.0033 and cuts the generalization gap by more
-than a third.
+Team Elo absorbs a franchise's average QB quality — a team that wins with an
+elite starter accumulates rating for it. What Elo cannot see is who is
+actually playing on a given Sunday. That blind spot is a large part of the
+market's information advantage over a pure team rating.
 
-The test window opens on 2019-2021, three seasons where home-field advantage
-dipped well below its historical level (.512 against a .573 baseline). An
-adaptive H tracks that; a constant fit on 1999-2018 cannot. In-sample
-evaluation alone would have discarded the feature.
+Each quarterback carries a rating: an exponentially-weighted average of his
+EPA per dropback, read before a game and updated after it. The adjustment
+entering the prediction is the difference between the two starters' ratings.
 
-RESULTS.md has the full comparison, plus a correction: an earlier version of
-this analysis read the dip as a permanent collapse, which the raw per-season
-rates do not support — 2022-2025 recovered to .552.
+Tested across six held-out windows, each tuned on data strictly preceding it:
+
+| window    | no QB  | with QB | diff    |
+|-----------|--------|---------|---------|
+| 2004-2009 | 0.6249 | 0.6212  | +0.0037 |
+| 2010-2015 | 0.6265 | 0.6183  | +0.0082 |
+| 2016-2018 | 0.6271 | 0.6206  | +0.0064 |
+| 2019-2021 | 0.6421 | 0.6300  | +0.0121 |
+| 2022-2025 | 0.6339 | 0.6280  | +0.0059 |
+
+Every window positive, with five of six independently selecting nearly the
+same parameters.
+
+## A feature that did not survive the same test
+
+Letting home-field advantage vary by season looked like a clear win: +0.0033
+held out on 2019-2025. Run across the same six windows, the entire gain
+turned out to sit in 2019-2021 — elsewhere the two schemes are within
++/-0.0017, and on 2016-2018 the rolling version is worse. Not adopted.
+
+RESULTS.md has both analyses, plus a correction: an earlier reading of the
+smoothed data called this a permanent collapse in home-field advantage, which
+the raw per-season rates do not support.
 
 ## Files
 
-- data.py — loads nflverse schedules via nflreadpy, merges relocated
-  franchises, sorts chronologically
+- data.py — loads nflverse schedules, merges relocated franchises
 - elo.py — the model, hyperparameter search, held-out evaluation,
-  calibration check, and Vegas benchmark
+  calibration, and the Vegas benchmark
+- qb_data.py — extracts each game's starting QB and his EPA per dropback
+- qb.py — tunes the QB adjustment against a no-QB control
+- qb_windows.py — the QB adjustment across six held-out windows
+- holdout_windows.py — the same test applied to season-varying home field
 - hfa_trend.py — raw home-win rate by season, unsmoothed
 - predict.py — forecasts upcoming games from the current ratings
-- score.py — joins actual results onto saved predictions and scores them
-  against the closing spread
-- RESULTS.md — findings log, including negative results and corrections
+- score.py — scores saved predictions against results and the closing spread
+- RESULTS.md — findings log, including rejected features and a correction
 
 ## Running it
 
     pip install nflreadpy pandas numpy scipy
     python elo.py
 
-Takes several minutes — the grid searches replay all 7,276 games about 1,650
-times.
+Takes several minutes — the grid searches replay all 7,276 games many times.
