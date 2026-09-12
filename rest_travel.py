@@ -6,9 +6,10 @@ about a smoothed series without checking the raw one, so: compute the
 candidate features, bucket them, and look at actual home-win rates before
 writing any model code.
 
-A team off a bye playing a team on a short week should have an edge. 
-Travel is plausible too, though the effect is usually reported as small 
-and tangled up with home field, which the model already has.
+Rest differential is a reasonable thing to expect -- a team off a bye
+playing a team on a short week should have an edge. Travel is reasonable
+too, though the effect is usually reported as small and tangled up with
+home field, which the model already has.
 
 Two passes. The first looks at raw home-win rate by bucket. The second
 looks at MODEL RESIDUALS by bucket, which is the test that actually

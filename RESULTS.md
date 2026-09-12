@@ -117,9 +117,40 @@ Note these H comparisons predate the QB adjustment — both arms lacked it, so
 the comparison was fair on its own terms, but it was run against a weaker
 model than the current one.
 
-**Rest and travel.** Both plausible a priori — a team off a bye against a
-team on a short week should have an edge, and a coast-to-coast trip should
-cost something. Neither survives inspection (rest_travel.py). Measured as
+**Everything else in the schedule data.** residual_scan.py runs every
+nflverse schedule column through the same residual test: divisional game,
+roof type, playing surface, day of week, week of season, temperature, wind,
+and the over/under total. Across roughly fifty buckets the largest |t| is
+1.8. That is fewer excursions than chance alone would produce, so schedule
+metadata can be treated as exhausted.
+
+One column is not flat. Bucketing by the closing spread gives a perfectly
+monotone residual gradient with |t| up to 7.3:
+
+| closing spread | n     | raw   | resid   | t    |
+|----------------|-------|-------|---------|------|
+| −30 to −7      | 521   | 0.234 | −0.0783 | −4.1 |
+| −7 to −3       | 1,334 | 0.345 | −0.0900 | −6.9 |
+| −3 to 0        | 690   | 0.468 | −0.0346 | −1.8 |
+| 0 to 3         | 1,447 | 0.543 | −0.0096 | −0.7 |
+| 3 to 7         | 1,938 | 0.675 | +0.0397 | +3.7 |
+| 7 to 30        | 1,348 | 0.815 | +0.0759 | +7.3 |
+
+This is not a feature. It says the home team beats expectation when the
+market favours them and underperforms when it does not — a restatement of
+"the market is better than this model," already measured directly as L
+0.6302 against 0.6140. Any model worse than the market produces exactly this
+gradient. It diagnoses the gap rather than closing it.
+
+Blending the model's probability with the market-implied one would improve
+log loss materially, and for a pure forecasting goal that is standard
+practice. It is excluded here because it makes "can this model beat the
+market" circular.
+
+**Rest and travel.** Both are reasonable ideas with a clear mechanism behind
+them — a team off a bye against a team on a short week should have an edge,
+and a coast-to-coast trip should cost something. Neither survives inspection
+(rest_travel.py). Measured as
 mean model residual S − E by bucket, so team quality is already removed:
 
 | rest diff (days) | n     | resid   | t    |
@@ -188,6 +219,9 @@ the smallest bucket (n=367), about 1.5 SE — not significant. Measured
 in-sample.
 
 ## Not yet tried
+
+The residual scan suggests the remaining gains are in better team ratings
+rather than game-level covariates.
 
 - Rolling team EPA (offense and defense) as features
 - Separate offensive and defensive ratings

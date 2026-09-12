@@ -88,6 +88,7 @@ raw per-season rates do not support.
 - holdout_windows.py — the same test applied to season-varying home field
 - hfa_trend.py — raw home-win rate by season, unsmoothed
 - rest_travel.py — residual analysis for rest and travel (both rejected)
+- residual_scan.py — every schedule column tested the same way
 - predict.py — forecasts upcoming games from the current ratings, inferring
   each team's starting QB from the roster and last season's attempts
 - find_qb.py — looks up QB ids for manual starter overrides
