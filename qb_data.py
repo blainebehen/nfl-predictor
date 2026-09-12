@@ -15,7 +15,22 @@ import nflreadpy as nfl
 
 from data import RELOCATED
 
-SEASONS = list(range(1999, 2026))
+def current_season(today=None):
+    """
+    The NFL season currently in progress, or the most recent one.
+
+    Seasons are named for the calendar year they start in, and start in
+    September, so anything before September belongs to the previous year.
+    Hardcoding an end year meant the model silently stopped learning as
+    soon as a new season began -- games appeared in the schedule but
+    carried no QB or EPA value.
+    """
+    from datetime import date
+    today = today or date.today()
+    return today.year if today.month >= 9 else today.year - 1
+
+
+SEASONS = list(range(1999, current_season() + 1))
 
 
 def qb_game_values(seasons=SEASONS):

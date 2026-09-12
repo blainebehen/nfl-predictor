@@ -50,10 +50,10 @@ import nflreadpy as nfl
 
 from data import load_games, RELOCATED
 from elo import run_elo, QB_SCALE, QB_ALPHA
-from qb_data import build_qb_map
+from qb_data import build_qb_map, current_season
 
 K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
-SEASONS = list(range(1999, 2026))
+SEASONS = list(range(1999, current_season() + 1))
 ALPHA = 0.15          # EWMA rate for team EPA
 
 
