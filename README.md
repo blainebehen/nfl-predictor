@@ -79,6 +79,29 @@ QB gain, which is what a refinement looks like next to new information: EPA
 correlates 0.80 with the model's own probability and improves the 20% where
 they disagree.
 
+## A feature in between: clinch status
+
+Teams that have secured a playoff berth rest starters in the last few
+weeks. The market prices it; a rating system cannot see it. The first
+version of this feature failed the residual test flat — and failed it for
+an instructive reason. It scored "nothing at stake" as one thing, pooling
+eliminated teams with seed-locked teams. Those move in opposite
+directions, and the pool was 98% eliminated teams, so they cancelled.
+
+Split apart, clinched teams underperform their rating by 0.058 in win
+probability (t +2.8, n=484), consistent across home and away and across
+both halves of the sample, while eliminated teams do not.
+
+The model term docks rating points from whichever side has clinched, and
+is inert outside REG weeks 15+. Across the same six windows: four of six
+positive under per-window tuning, five of six at a fixed scale, and a
+smooth in-sample loss curve with a clean interior minimum at 50 rating
+points. Whole-sample L 0.6267 → 0.6261, accuracy 0.6441 → 0.6454.
+
+That is stronger than the rejected features and weaker than the adopted
+ones, so it ships as a flag — `CLINCH_SCALE` in elo.py, used by nothing.
+RESULTS.md has the full case both ways. 2026 provides a seventh window.
+
 ## Features that did not survive the same test
 
 Letting home-field advantage vary by season looked like a clear win: +0.0033
@@ -109,10 +132,17 @@ raw per-season rates do not support.
 - residual_scan.py — every schedule column tested the same way
 - epa_test.py — residual analysis for rolling team EPA (adopted)
 - epa.py / epa_windows.py — tuning and six-window validation for EPA
-- predict.py — forecasts upcoming games from the current ratings, inferring
-  each team's starting QB from the roster and last season's attempts
+- clinch.py — playoff standings and clinch flags, leakage-free
+- clinch_test.py — the residual test that came back flat
+- clinch_probe.py — the same data split by flag, where the effect is
+- clinch_windows.py / clinch_fixed.py — six-window validation, tuned and
+  at a fixed scale
+- predict.py — forecasts upcoming games from the current ratings, running
+  the QB-only and theta* models side by side, and inferring each team's
+  starting QB from the roster and last season's attempts
 - find_qb.py — looks up QB ids for manual starter overrides
-- score.py — scores saved predictions against results and the closing spread
+- score.py — scores both saved models against results and the closing
+  spread
 - RESULTS.md — findings log, including rejected features and a correction
 
 ## Running it

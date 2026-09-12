@@ -24,6 +24,16 @@ QB_ALPHA = 0.02     # EWMA rate for a quarterback's rating
 EPA_SCALE = 200     # rating points per unit of net EPA/play
 EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
 
+# Clinch adjustment. CANDIDATE, NOT IN theta*. A team that has secured a
+# playoff berth underperforms its rating in REG weeks 15+. The evidence
+# sits between this project's adoption and rejection bars -- 4 of 6
+# windows positive under per-window tuning (5 of 6 at a fixed scale), but
+# a smooth loss curve with a clean interior minimum here. See the Clinch
+# status section of RESULTS.md before turning it on. Pass
+# clinch_map=build_clinch_map(games), clinch_scale=CLINCH_SCALE to
+# run_elo to evaluate it; nothing uses it by default.
+CLINCH_SCALE = 50   # rating points docked from a team that has clinched
+
 
 def rolling_hfa(games, window=5, prior=0.5631):
     """
@@ -59,7 +69,7 @@ def rolling_hfa(games, window=5, prior=0.5631):
 def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
             hfa=None, qb_map=None, qb_scale=0.0, qb_alpha=0.10,
             qb_beta=0.03, qb_init=0.0, epa_map=None, epa_scale=0.0,
-            epa_alpha=0.15):
+            epa_alpha=0.15, clinch_map=None, clinch_scale=0.0):
     """
     Walk the games in chronological order. For each game: predict, record,
     then update. The prediction uses only ratings built from PRIOR games,
@@ -91,6 +101,13 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
     epa_scale  rating points per unit of net-EPA differential. 0 disables
                it, which is the control condition.
     epa_alpha  EWMA rate for a team's offensive and defensive EPA.
+    clinch_map optional dict (game_id, team) -> 1.0 for a team that has
+               clinched a playoff berth entering that game, from
+               clinch.build_clinch_map. Absent keys count as 0.
+    clinch_scale rating points docked from a team that has clinched. 0
+               disables it, which is the control condition. Eliminated
+               teams are deliberately NOT flagged -- they show the
+               opposite sign, and pooling the two cancels both.
     skip_late  if True, still predict REG weeks 17-18 but don't learn from
                them. Tested and rejected (see RESULTS.md); kept for
                reproducibility.
@@ -110,6 +127,10 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
     # offence minus defence allowed, so higher is better.
     use_epa = epa_map is not None and epa_scale != 0.0
     OFF, DEF = {}, {}
+
+    # Clinch state is precomputed from standings, so there is nothing to
+    # carry between games -- just a lookup.
+    use_clinch = clinch_map is not None and clinch_scale != 0.0
 
     for g in games.itertuples():
 
@@ -147,6 +168,16 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
             net_h = OFF.get(g.home_team, 0.0) - DEF.get(g.home_team, 0.0)
             net_a = OFF.get(g.away_team, 0.0) - DEF.get(g.away_team, 0.0)
             adj += epa_scale * (net_h - net_a)
+
+        # Clinch adjustment: a team that has already secured a playoff
+        # berth underperforms its rating in late-season games -- starters
+        # rest, and the ratings cannot see it. Docked from whichever side
+        # has clinched, so the sign is (away - home). Nonzero only on REG
+        # weeks 15+; every other game has no entry in clinch_map.
+        if use_clinch:
+            c_h = clinch_map.get((g.game_id, g.home_team), 0.0)
+            c_a = clinch_map.get((g.game_id, g.away_team), 0.0)
+            adj += clinch_scale * (c_a - c_h)
 
         # d is the linear predictor: rating gap plus a home offset (the
         # intercept, in logistic-regression terms) plus any adjustments.

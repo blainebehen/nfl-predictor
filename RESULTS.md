@@ -134,6 +134,118 @@ The gain is largest on 2019–2021, the window hardest for both models. That is
 consistent with COVID protocols pulling starters out on short notice, which
 is exactly what this feature catches and team Elo cannot.
 
+## Clinch status — a candidate, not yet adopted
+
+The targeted fix named at the end of the late-season-exclusion entry
+below. Two findings pointed at the same gap: 15 of the 20 largest
+disagreements with the closing line are Week 16–18 games, and the naive
+starter rule in predict.py picked third-stringers for Kansas City and
+Denver because those teams had their seeds locked. Both are teams with
+nothing to play for resting starters — real contamination the market
+prices and a rating system cannot see.
+
+Stake is computed per team entering a game, from games completed strictly
+before it, using win totals only (`clinch.py`). Tiebreakers are ignored,
+which makes the flags conservative. Sanity check on 2024 Week 18: the five
+teams flagged live are exactly the five that still had something to play
+for, and Kansas City — which had locked the AFC's top seed and sat
+Mahomes — is flagged dead.
+
+**The first version failed, and the failure was the interesting part.**
+Bucketing the residual by a stake differential gave a perfectly monotone
+raw gradient and no residual gradient at all:
+
+| stake diff | n   | raw   | resid   | t    |
+|------------|-----|-------|---------|------|
+| −1.0       | 169 | 0.426 | +0.0444 | +1.2 |
+| −0.5       | 229 | 0.463 | −0.0294 | −1.0 |
+| 0.0        | 560 | 0.573 | −0.0030 | −0.2 |
+| +0.5       | 244 | 0.656 | +0.0423 | +1.5 |
+| +1.0       | 164 | 0.732 | +0.0018 | +0.1 |
+
+That is the travel result again: a clean raw climb, flat residuals, max
+|t| 1.5. On the reading this project has used twice before, it stops here.
+
+It did not stop here because the feature was built wrong. Stake 0.0 pooled
+two situations that are not alike — *eliminated* and *seed locked*. Only
+the second rests starters; the first is just a bad team playing its normal
+lineup, which the ratings already know about. And the pool was 98%
+eliminated teams, so whatever the locked teams carried was buried. Split
+apart, they move in opposite directions and had been cancelling:
+
+| flag                  | n   | shortfall | t    |
+|-----------------------|-----|-----------|------|
+| eliminated            | 572 | −0.0290   | −1.6 |
+| clinched a berth      | 473 | +0.0418   | +2.0 |
+| locked the top seed   |  19 | +0.4234   | +4.1 |
+| clinched, pooled      | 484 | +0.0575   | +2.8 |
+
+Shortfall is signed so positive means the flagged team did worse than the
+model predicted, pooled across home and away — two independent samples
+that agree. The top-seed cell is enormous and n=19, which is the
+single-cell excursion this project rejects on sight; the usable evidence
+is the pooled clinched row. By era: +0.0743 (t +2.5) on 1999–2011 and
++0.0427 (t +1.5) on 2012–2025 — same sign, weakening.
+
+So the model term flags clinched teams only, and docks
+`clinch_scale × (clinched_away − clinched_home)` rating points. It is
+inert outside REG weeks 15+, which is about 11% of games, so even a real
+effect can only move whole-sample L slightly.
+
+**Six windows, scale tuned inside each training span (`clinch_windows.py`):**
+
+| window    | n     | theta* | +clinch | diff    | tuned | late-only diff |
+|-----------|-------|--------|---------|---------|-------|----------------|
+| 2004–2009 | 1,602 | 0.6227 | 0.6227  | +0.0000 |   0   | +0.0000 on 288 |
+| 2010–2015 | 1,602 | 0.6182 | 0.6176  | +0.0005 |  75   | +0.0025 on 288 |
+| 2016–2018 |   801 | 0.6252 | 0.6254  | −0.0002 |  50   | −0.0007 on 144 |
+| 2019–2021 |   821 | 0.6334 | 0.6325  | +0.0009 |  50   | +0.0048 on 160 |
+| 2022–2025 | 1,139 | 0.6304 | 0.6303  | +0.0001 |  50   | +0.0004 on 255 |
+| 2019–2025 | 1,960 | 0.6317 | 0.6312  | +0.0004 |  50   | +0.0021 on 415 |
+
+Four of six positive, one exactly zero, one negative by 0.0002. Scale 50
+in four of six. The zero is the tuner declining to use the feature at all:
+that window trains on 1999–2003 alone, a few hundred flagged team-games,
+which is not enough to identify a scale. Held at 50 instead
+(`clinch_fixed.py`), that same window is the largest gain anywhere,
++0.0018 whole-sample and +0.0097 on late games — so its zero is a power
+problem, not evidence against.
+
+**The strongest evidence is the shape of the loss curve.** In-sample, on
+late games:
+
+| scale | 0      | 15     | 30     | 50     | 75     | 110    | 160    |
+|-------|--------|--------|--------|--------|--------|--------|--------|
+| L     | 0.6132 | 0.6118 | 0.6109 | 0.6104 | 0.6109 | 0.6141 | 0.6235 |
+
+Smooth, with a clean interior minimum at 50 and symmetric rise either
+side. A feature fitting noise gives a jagged curve or a monotone slide
+into the grid edge. Spillover onto the 5,912 games the adjustment never
+touches is +0.0000, so it is not buying late-season loss with early-season
+loss. Whole sample it moves L 0.6267 → 0.6261 and accuracy 0.6441 →
+0.6454.
+
+**Why this is not adopted here.** The bar that admitted the QB adjustment
+and team EPA was *every window positive*; the bar that rejected rolling H
+was one favourable window out of six. This is neither. It is clearly
+stronger than rolling H — the effect replicates in both eras, on both
+sides of the home/away split, and produces a well-behaved loss curve —
+and clearly weaker than EPA, which won all six windows and selected one
+scale in all six.
+
+Setting it aside on a technicality would be as wrong as adopting it on a
+mechanism that sounds right, which is the mistake travel was built to
+prevent. So it ships as a flag rather than as part of theta*:
+`CLINCH_SCALE = 50` in elo.py, used by nothing. The adjustment is inert
+until Week 15, so nothing has to be decided before December, and the 2026
+season supplies a seventh window that is genuinely out of sample for it.
+
+Two ways the flags could be sharpened first: seed-locked is currently only
+"clinched the #1 seed" (19 team-games), where the real population is any
+team whose seed cannot change; and a berth clinched on a tiebreaker is not
+flagged until the arithmetic alone settles it. Both under-flag, so both
+would strengthen the measured effect rather than create one.
+
 ## Rejected
 
 **The team-baseline formulation of the QB adjustment.** The original design
@@ -288,7 +400,10 @@ smallest buckets and are about 1.4 SE — not significant. Measured in-sample.
 - A logistic regression with all terms as features, rather than additive
   adjustments to a rating
 - Separate offensive and defensive ratings
-- Clinch-status feature for late-season games
+- ~~Clinch-status feature for late-season games~~ — built and tested; see
+  the Clinch status section. Held as a flag, not adopted
+- Widening the seed-locked flag beyond "clinched the #1 seed", which is
+  only 19 team-games and carries the largest effect in the project
 - A joint tune of team and QB parameters — currently staged, with k/H/rho
   fixed at theta* while the QB grid runs
 - Against-the-spread evaluation is written (ats.py) but not yet finalised
@@ -303,6 +418,32 @@ Week 1 2026 predictions committed before kickoff (predictions_2026.csv),
 using theta* including the QB adjustment. An earlier pre-QB version of the
 same week is in git history; it was replaced before any game was played, so
 no forecast was revised with knowledge of a result.
+
+### Two models forward, from Week 2
+
+Team EPA was adopted in the backtest but never reached predict.py, so the
+committed Week 1 forecast ran Elo + MOV + QB while every number above
+describes Elo + MOV + QB + EPA. Fixed: predict.py now carries both sets of
+ratings and writes both probabilities every week — `E` for the QB-only
+model and `E_full` for theta* — and score.py reports each against the
+other and against the closing line.
+
+Week 1 is **not** back-filled. Two of its games had kicked off by the time
+the fix landed, so a Week 1 `E_full` written now would be a forecast made
+with knowledge of results, and even for the fourteen unplayed games it
+would carry two games of information the committed `E` did not have. The
+head-to-head therefore starts at Week 2, where both models are committed
+from identical information. `E_full` is blank for Week 1 and those games
+score the QB model alone.
+
+What to expect: the two agree on the pick in all 16 Week 2 games and
+differ by at most 0.055 in probability, which is what a +0.796 correlation
+between the EPA differential and the model's own probability implies. The
+backtest gap between them is 0.0026 in held-out L. A season of roughly 285
+games cannot resolve a difference that size — the standard error on L over
+285 games is around 0.03, an order of magnitude larger. Logging both
+starts the clock; it does not settle anything this year, and a week where
+one model looks better than the other is noise.
 
 score.py joins actual results and reports Acc and L for the model and the
 closing spread on the same games, with a standard error on accuracy attached.
