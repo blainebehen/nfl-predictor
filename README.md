@@ -61,16 +61,21 @@ Tested across six held-out windows, each tuned on data strictly preceding it:
 Every window positive, with five of six independently selecting nearly the
 same parameters.
 
-## A feature that did not survive the same test
+## Features that did not survive the same test
 
 Letting home-field advantage vary by season looked like a clear win: +0.0033
 held out on 2019-2025. Run across the same six windows, the entire gain
 turned out to sit in 2019-2021 — elsewhere the two schemes are within
 +/-0.0017, and on 2016-2018 the rolling version is worse. Not adopted.
 
-RESULTS.md has both analyses, plus a correction: an earlier reading of the
-smoothed data called this a permanent collapse in home-field advantage, which
-the raw per-season rates do not support.
+Rest and travel were rejected the same way. Travel's raw home-win rate climbs
+cleanly with distance — exactly the pattern the feature predicts — but the
+model residuals are flat. Long trips are made by the same few teams every
+year, so the gradient was team quality, which the ratings already capture.
+
+RESULTS.md has all three analyses, plus a correction: an earlier reading of
+the smoothed data called the home-field dip a permanent collapse, which the
+raw per-season rates do not support.
 
 ## Files
 
@@ -82,6 +87,7 @@ the raw per-season rates do not support.
 - qb_windows.py — the QB adjustment across six held-out windows
 - holdout_windows.py — the same test applied to season-varying home field
 - hfa_trend.py — raw home-win rate by season, unsmoothed
+- rest_travel.py — residual analysis for rest and travel (both rejected)
 - predict.py — forecasts upcoming games from the current ratings, inferring
   each team's starting QB from the roster and last season's attempts
 - find_qb.py — looks up QB ids for manual starter overrides

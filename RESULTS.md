@@ -117,6 +117,36 @@ Note these H comparisons predate the QB adjustment — both arms lacked it, so
 the comparison was fair on its own terms, but it was run against a weaker
 model than the current one.
 
+**Rest and travel.** Both plausible a priori — a team off a bye against a
+team on a short week should have an edge, and a coast-to-coast trip should
+cost something. Neither survives inspection (rest_travel.py). Measured as
+mean model residual S − E by bucket, so team quality is already removed:
+
+| rest diff (days) | n     | resid   | t    |
+|------------------|-------|---------|------|
+| −30 to −6        | 344   | −0.0508 | −2.0 |
+| −6 to −2         | 387   | −0.0187 | −0.8 |
+| −2 to −0.5       | 517   | +0.0051 | +0.2 |
+| −0.5 to 0.5      | 4,860 | −0.0007 | −0.1 |
+| 0.5 to 2         | 453   | +0.0058 | +0.3 |
+| 2 to 6           | 331   | −0.0230 | −0.9 |
+| 6 to 30          | 386   | +0.0282 | +1.2 |
+
+Scatter, not a gradient, and the leftmost cell has the wrong sign for a
+fatigue story. The direct test — home off a bye against a team on short rest
+— is −0.1 SE on 58 games.
+
+Travel has one cell at +2.8 SE (1,500–2,000 miles) but the bucket above it
+reverses to −1.1 on a larger sample. Six buckets tested; one clearing 2 SE is
+what chance produces.
+
+**The instructive part:** travel's raw home-win rate climbs cleanly from .548
+to .615 across the first five buckets — exactly the pattern the feature
+predicts. The residuals stay flat. Long trips are made by the same handful of
+teams every year, so the raw gradient was team quality, not fatigue, and the
+model already had it. The clearest example in this project of why raw rates
+mislead.
+
 **Late-season exclusion.** 15 of the 20 largest disagreements with the
 closing line are Week 16–18 games, where seeding is locked and starters rest
 — real contamination the market prices and Elo cannot see. But excluding
@@ -159,7 +189,6 @@ in-sample.
 
 ## Not yet tried
 
-- Rest days and travel distance
 - Rolling team EPA (offense and defense) as features
 - Separate offensive and defensive ratings
 - Clinch-status feature for late-season games
