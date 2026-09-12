@@ -24,15 +24,27 @@ QB_ALPHA = 0.02     # EWMA rate for a quarterback's rating
 EPA_SCALE = 200     # rating points per unit of net EPA/play
 EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
 
-# Clinch adjustment. CANDIDATE, NOT IN theta*. A team that has secured a
-# playoff berth underperforms its rating in REG weeks 15+. The evidence
-# sits between this project's adoption and rejection bars -- 4 of 6
-# windows positive under per-window tuning (5 of 6 at a fixed scale), but
-# a smooth loss curve with a clean interior minimum here. See the Clinch
-# status section of RESULTS.md before turning it on. Pass
-# clinch_map=build_clinch_map(games), clinch_scale=CLINCH_SCALE to
-# run_elo to evaluate it; nothing uses it by default.
-CLINCH_SCALE = 50   # rating points docked from a team that has clinched
+# Clinch adjustment. CANDIDATE, NOT IN theta*. A team whose playoff seed
+# can no longer move underperforms its rating in REG weeks 15+ -- it rests
+# starters, and the ratings cannot see it.
+#
+# Use the RANK-FROZEN flag, not "has clinched a berth". A team that has
+# secured a place but is still fighting for seeding has everything to play
+# for; pooling it in dilutes the effect roughly fourfold. Build the map
+# with clinch_wide.build_wide_map and keep the 'locked' label:
+#
+#   lab = build_wide_map(games)
+#   cmap = {k: 1.0 for k, v in lab.items() if v == 'locked'}
+#   run_elo(..., clinch_map=cmap, clinch_scale=CLINCH_SCALE)
+#
+# Four of six windows positive, but five of six independently selected
+# 130 -- the only stable parameter any version of this produced. Nothing
+# uses it by default. Read the three Clinch status sections of RESULTS.md
+# before turning it on: the evidence is exploratory, not confirmatory.
+#
+# Do NOT reach for skip_games instead. Excluding these games from the
+# update was tested on exactly this flag and loses, 1 of 6 windows.
+CLINCH_SCALE = 130  # rating points docked from a rank-frozen team
 
 
 def rolling_hfa(games, window=5, prior=0.5631):
@@ -69,7 +81,8 @@ def rolling_hfa(games, window=5, prior=0.5631):
 def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
             hfa=None, qb_map=None, qb_scale=0.0, qb_alpha=0.10,
             qb_beta=0.03, qb_init=0.0, epa_map=None, epa_scale=0.0,
-            epa_alpha=0.15, clinch_map=None, clinch_scale=0.0):
+            epa_alpha=0.15, clinch_map=None, clinch_scale=0.0,
+            skip_games=None):
     """
     Walk the games in chronological order. For each game: predict, record,
     then update. The prediction uses only ratings built from PRIOR games,
@@ -108,6 +121,12 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
                disables it, which is the control condition. Eliminated
                teams are deliberately NOT flagged -- they show the
                opposite sign, and pooling the two cancels both.
+    skip_games optional set of game_ids to predict and score, but NOT
+               learn from. The targeted form of skip_late: instead of
+               discarding whole weeks, discard only the games a flag says
+               are contaminated. A rested-starter loss teaches the ratings
+               something false, and unlike the clinch adjustment -- which
+               fixes the prediction -- this protects the rating itself.
     skip_late  if True, still predict REG weeks 17-18 but don't learn from
                them. Tested and rejected (see RESULTS.md); kept for
                reproducibility.
@@ -199,6 +218,8 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
 
         # --- 4. update -----------------------------------------------
         if skip_late and g.game_type == 'REG' and g.week >= 17:
+            continue
+        if skip_games is not None and g.game_id in skip_games:
             continue
 
         # Margin-of-victory multiplier:

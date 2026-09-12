@@ -189,8 +189,8 @@ is the pooled clinched row. By era: +0.0743 (t +2.5) on 1999–2011 and
 
 So the model term flags clinched teams only, and docks
 `clinch_scale × (clinched_away − clinched_home)` rating points. It is
-inert outside REG weeks 15+, which is about 11% of games, so even a real
-effect can only move whole-sample L slightly.
+inert outside REG weeks 15+, so even a real effect can only move
+whole-sample L slightly.
 
 **Six windows, scale tuned inside each training span (`clinch_windows.py`):**
 
@@ -203,49 +203,146 @@ effect can only move whole-sample L slightly.
 | 2022–2025 | 1,139 | 0.6304 | 0.6303  | +0.0001 |  50   | +0.0004 on 255 |
 | 2019–2025 | 1,960 | 0.6317 | 0.6312  | +0.0004 |  50   | +0.0021 on 415 |
 
-Four of six positive, one exactly zero, one negative by 0.0002. Scale 50
-in four of six. The zero is the tuner declining to use the feature at all:
-that window trains on 1999–2003 alone, a few hundred flagged team-games,
-which is not enough to identify a scale. Held at 50 instead
-(`clinch_fixed.py`), that same window is the largest gain anywhere,
-+0.0018 whole-sample and +0.0097 on late games — so its zero is a power
-problem, not evidence against.
+Four of six positive, one exactly zero, one negative by 0.0002, and the
+selected scale wandering across 0, 50 and 75. Held at a fixed 50 instead
+(`clinch_fixed.py`) it is five of six, with a smooth in-sample loss curve
+on late games — 0.6132, 0.6118, 0.6109, **0.6104**, 0.6109, 0.6141,
+0.6235 across scales 0 to 160 — a clean interior minimum and symmetric
+rise either side, which a feature fitting noise does not produce.
+Spillover onto the 5,912 games the adjustment never touches is +0.0000.
+That fixed-scale run is not a validation, though: 50 was chosen knowing
+the whole sample. It says the effect exists, not that it could have been
+found in advance.
 
-**The strongest evidence is the shape of the loss curve.** In-sample, on
-late games:
+## Clinch status, second pass: the flag was still wrong
 
-| scale | 0      | 15     | 30     | 50     | 75     | 110    | 160    |
-|-------|--------|--------|--------|--------|--------|--------|--------|
-| L     | 0.6132 | 0.6118 | 0.6109 | 0.6104 | 0.6109 | 0.6141 | 0.6235 |
+"Clinched a berth" is not the population that rests starters. A team that
+has secured a place but is still fighting for seeding has everything to
+play for. The population is any team that **cannot improve its position
+by winning** — whatever seed that is.
 
-Smooth, with a clean interior minimum at 50 and symmetric rise either
-side. A feature fitting noise gives a jagged curve or a monotone slide
-into the grid edge. Spillover onto the 5,912 games the adjustment never
-touches is +0.0000, so it is not buying late-season loss with early-season
-loss. Whole sample it moves L 0.6267 → 0.6261 and accuracy 0.6441 →
-0.6454.
+`clinch_wide.py` splits the clinched teams three ways, each a strict
+subset of the last: `in` (seed still live), `nogain` (cannot climb, could
+still fall), `locked` (rank cannot move in either direction). The
+shortfall is a clean dose-response:
 
-**Why this is not adopted here.** The bar that admitted the QB adjustment
-and team EPA was *every window positive*; the bar that rejected rolling H
-was one favourable window out of six. This is neither. It is clearly
-stronger than rolling H — the effect replicates in both eras, on both
-sides of the home/away split, and produces a well-behaved loss curve —
-and clearly weaker than EPA, which won all six windows and selected one
-scale in all six.
+| flag                          | n   | shortfall | t    |
+|-------------------------------|-----|-----------|------|
+| in — clinched, seed still live| 341 | +0.0146   | +0.6 |
+| nogain — cannot improve       | 129 | +0.0748   | +1.9 |
+| locked — rank frozen          |  54 | +0.2426   | +3.8 |
+| nogain + locked               | 175 | +0.1300   | +3.8 |
 
-Setting it aside on a technicality would be as wrong as adopting it on a
-mechanism that sounds right, which is the mistake travel was built to
-prevent. So it ships as a flag rather than as part of theta*:
-`CLINCH_SCALE = 50` in elo.py, used by nothing. The adjustment is inert
-until Week 15, so nothing has to be decided before December, and the 2026
-season supplies a seventh window that is genuinely out of sample for it.
+n counts games where exactly one side carries the flag, so the combined
+row is smaller than the sum — nine games have it on both sides and carry
+no contrast. By era on nogain+locked: +0.1407 (t +3.0) on 1999–2011,
++0.1182 (t +2.3) on 2012–2025 — same sign, similar size, much steadier
+than the diluted version.
 
-Two ways the flags could be sharpened first: seed-locked is currently only
-"clinched the #1 seed" (19 team-games), where the real population is any
-team whose seed cannot change; and a berth clinched on a tiebreaker is not
-flagged until the arithmetic alone settles it. Both under-flag, so both
-would strengthen the measured effect rather than create one.
+So the +0.0575 above was the real effect buried under 341 team-games of
+nothing. The gradient the first residual test went looking for and could
+not find does exist; it just needed the right variable.
 
+**But sharpening the flag made the model worse, not better.** Six windows
+on nogain+locked (`clinch_wide_windows.py`): four of six binary, three of
+six graded, scales scattered across 50/80/115 and 115/155/200. Narrowing
+multiplied the effect size by 2.3× and cut the flagged population by
+3.2×, from 626 team-games to 193. The product shrank and the variance per
+window grew.
+
+## Clinch status, third pass: rank-frozen, adjust versus exclude
+
+`locked` alone is 56 team-games in 55 games — 0.76% of the data, about
+two team-games a season. `locked_test.py` runs both mechanisms on exactly
+that population.
+
+**Excluding them fails cleanly.** Predict and score the game but do not
+learn from it (`skip_games` in run_elo, added for this):
+
+| window    | theta* | −locked | diff    |
+|-----------|--------|---------|---------|
+| 2004–2009 | 0.6226 | 0.6244  | −0.0018 |
+| 2010–2015 | 0.6182 | 0.6183  | −0.0001 |
+| 2016–2018 | 0.6252 | 0.6254  | −0.0002 |
+| 2019–2021 | 0.6334 | 0.6330  | +0.0005 |
+| 2022–2025 | 0.6301 | 0.6309  | −0.0008 |
+| 2019–2025 | 0.6315 | 0.6318  | −0.0003 |
+
+One of six, whole sample 0.6267 → 0.6272, accuracy 0.6441 → 0.6429.
+
+**This closes the late-season-exclusion question.** That earlier test
+dropped all of REG weeks 17–18 — 508 games, 1,016 team-games, 7% of the
+data — and came out slightly worse, leaving it open whether the idea was
+wrong or merely too blunt. Dropping only the 55 games where a team's rank
+is frozen is the sharpest possible version of it, and it fails the same
+way. The idea is wrong: discarding a game costs more real signal than the
+rested-starter noise it removes. Adjusting the prediction and refusing to
+learn are not interchangeable.
+
+**Adjusting on rank-frozen is the best clinch result in the project:**
+
+| window    | theta* | +locked | diff    | tuned | late-only diff |
+|-----------|--------|---------|---------|-------|----------------|
+| 2004–2009 | 0.6226 | 0.6203  | +0.0024 |  130  | +0.0152 on 288 |
+| 2010–2015 | 0.6182 | 0.6207  | −0.0025 |  260  | −0.0133 on 288 |
+| 2016–2018 | 0.6252 | 0.6252  | −0.0000 |  130  | +0.0013 on 144 |
+| 2019–2021 | 0.6334 | 0.6331  | +0.0004 |  130  | +0.0022 on 160 |
+| 2022–2025 | 0.6301 | 0.6276  | +0.0025 |  130  | +0.0118 on 255 |
+| 2019–2025 | 0.6315 | 0.6299  | +0.0016 |  130  | +0.0081 on 415 |
+
+Still four of six — but **five of six windows independently selected
+scale 130**, the first stable parameter any version of this feature has
+produced, and the effect on late games is an order of magnitude larger
+than the diluted flag managed. The single failure is the window that
+picked 260 instead of 130: it doubled the adjustment and was punished for
+it. With two flagged team-games a season, a training span offers about
+ten games to estimate a scale from, which is not enough.
+
+That is the whole problem in one line. The effect is confidently real and
+too rare to calibrate.
+
+## Clinch status: the decision, and what is wrong with the evidence
+
+Not adopted. `CLINCH_SCALE = 130` in elo.py with the rank-frozen flag,
+used by nothing.
+
+The bar that admitted the QB adjustment and team EPA was *every window
+positive*, with parameters clustering; the bar that rejected rolling H was
+one favourable window out of six. Four of six with a stable parameter is
+neither, and the whole-sample gain is bounded by the fact that the
+adjustment is nonzero in 54 games out of 7,278.
+
+**Two things are wrong with the evidence, and both matter more than the
+window count.**
+
+First, the pre-specified residual test came back flat and the analysis
+continued anyway. The reason was sound — the variable pooled eliminated
+and clinched teams, which move in opposite directions, and a variable like
+that reads zero however strong either effect is. That was a design error
+visible in advance, not a data-mining opportunity. But the error was only
+noticed *because* the result was null. Had the pooled version come back
+positive it would have shipped unexamined. Checking harder when the answer
+is unwelcome is exactly the asymmetry the stopping rule exists to prevent.
+
+Second, the six-window test has now been run on four different flags —
+any-clinched, nogain+locked binary, nogain+locked graded, and locked. Each
+additional variant makes a favourable result easier to reach by chance, so
+four of six on the fourth attempt is weaker than four of six on the first
+would have been. The scale clustering at 130 is the part worth trusting;
+the window count is not worth what it looks like.
+
+So everything here is hypothesis-generating rather than hypothesis-
+testing, and this project does not adopt on that. What it does supply is a
+fully specified hypothesis that no version of the feature has ever
+touched: rank-frozen, adjust rather than exclude, scale 130. 2026 onward
+is genuinely out of sample for it. At two team-games a season it will take
+years to say anything — which is its own verdict on whether the feature is
+worth carrying.
+
+Remaining known weakness in the flag: tiebreakers are ignored, so a seed
+settled on head-to-head rather than raw wins is not flagged. That
+under-flags, so the true rank-frozen population is somewhat larger than 56
+and the measured effect is if anything understated.
 ## Rejected
 
 **The team-baseline formulation of the QB adjustment.** The original design
@@ -400,10 +497,16 @@ smallest buckets and are about 1.4 SE — not significant. Measured in-sample.
 - A logistic regression with all terms as features, rather than additive
   adjustments to a rating
 - Separate offensive and defensive ratings
-- ~~Clinch-status feature for late-season games~~ — built and tested; see
-  the Clinch status section. Held as a flag, not adopted
-- Widening the seed-locked flag beyond "clinched the #1 seed", which is
-  only 19 team-games and carries the largest effect in the project
+- ~~Clinch-status feature for late-season games~~ — built and tested
+  across three passes; see the Clinch status sections. Held as a flag on
+  the rank-frozen population at scale 130, not adopted
+- ~~Widening the seed-locked flag beyond "clinched the #1 seed"~~ — done.
+  Widening to 56 team-games gave the stable parameter; widening further to
+  193 diluted it again
+- Implementing the actual tiebreaker ladder, so a seed settled on
+  head-to-head is flagged. The current flag under-counts rank-frozen teams
+  by an unknown amount, and more of them is the only way this feature gets
+  enough data to calibrate
 - A joint tune of team and QB parameters — currently staged, with k/H/rho
   fixed at theta* while the QB grid runs
 - Against-the-spread evaluation is written (ats.py) but not yet finalised

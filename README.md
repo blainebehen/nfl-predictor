@@ -81,26 +81,38 @@ they disagree.
 
 ## A feature in between: clinch status
 
-Teams that have secured a playoff berth rest starters in the last few
-weeks. The market prices it; a rating system cannot see it. The first
-version of this feature failed the residual test flat — and failed it for
-an instructive reason. It scored "nothing at stake" as one thing, pooling
-eliminated teams with seed-locked teams. Those move in opposite
-directions, and the pool was 98% eliminated teams, so they cancelled.
+Teams whose playoff seed can no longer move rest their starters in the
+last few weeks. The market prices it; a rating system cannot see it.
 
-Split apart, clinched teams underperform their rating by 0.058 in win
-probability (t +2.8, n=484), consistent across home and away and across
-both halves of the sample, while eliminated teams do not.
+Getting to that sentence took three passes, and the wrong turns are the
+useful part. The first flag scored "nothing at stake", pooling eliminated
+teams with seed-locked teams — opposite effects that cancelled, so the
+residual test came back flat. The second flagged every team that had
+clinched a berth, which buried the effect under 341 team-games of teams
+still fighting for seeding. Only the third — rank frozen in both
+directions — isolates it:
 
-The model term docks rating points from whichever side has clinched, and
-is inert outside REG weeks 15+. Across the same six windows: four of six
-positive under per-window tuning, five of six at a fixed scale, and a
-smooth in-sample loss curve with a clean interior minimum at 50 rating
-points. Whole-sample L 0.6267 → 0.6261, accuracy 0.6441 → 0.6454.
+| flag                           | n   | shortfall | t    |
+|--------------------------------|-----|-----------|------|
+| clinched, seed still live      | 341 | +0.0146   | +0.6 |
+| cannot improve, could fall     | 129 | +0.0748   | +1.9 |
+| rank frozen both ways          |  54 | +0.2426   | +3.8 |
 
-That is stronger than the rejected features and weaker than the adopted
-ones, so it ships as a flag — `CLINCH_SCALE` in elo.py, used by nothing.
-RESULTS.md has the full case both ways. 2026 provides a seventh window.
+Two mechanisms were tested on that population. Docking rating points from
+the frozen team wins four of six windows, and five of six independently
+select 130 points — the only stable parameter any version produced.
+*Excluding* those games from the update instead loses, one of six, which
+settles an older open question: the earlier weeks-17–18 exclusion did not
+fail for being too blunt. Discarding a game costs more signal than the
+rested-starter noise it removes, however precisely it is aimed.
+
+Not adopted. The adjustment is nonzero in 54 games out of 7,278 — about
+two team-games a season — which is enough to measure the effect
+confidently and not enough to calibrate it. `CLINCH_SCALE` in elo.py,
+used by nothing. RESULTS.md has the full case, including what is wrong
+with the evidence: the pre-specified test came back flat and the analysis
+continued anyway, and four flag variants were tried before one looked
+good.
 
 ## Features that did not survive the same test
 
@@ -135,8 +147,11 @@ raw per-season rates do not support.
 - clinch.py — playoff standings and clinch flags, leakage-free
 - clinch_test.py — the residual test that came back flat
 - clinch_probe.py — the same data split by flag, where the effect is
-- clinch_windows.py / clinch_fixed.py — six-window validation, tuned and
-  at a fixed scale
+- clinch_windows.py / clinch_fixed.py — six-window validation of the
+  clinched-a-berth flag, tuned and at a fixed scale
+- clinch_wide.py — seed-range logic: in / cannot-improve / rank-frozen
+- clinch_wide_windows.py — six windows on cannot-improve + rank-frozen
+- locked_test.py — rank-frozen alone, adjusting versus excluding
 - predict.py — forecasts upcoming games from the current ratings, running
   the QB-only and theta* models side by side, and inferring each team's
   starting QB from the roster and last season's attempts
