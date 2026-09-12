@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .spyproject/
 .DS_Store
+
+# local only — dashboard is private, not part of the public repo
+dashboard.html
+data.js
