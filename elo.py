@@ -18,6 +18,12 @@ TEST_START = 2019   # held-out evaluation window: this season onward
 QB_SCALE = 600      # rating points per unit of EPA/dropback
 QB_ALPHA = 0.02     # EWMA rate for a quarterback's rating
 
+# Adopted team-EPA adjustment. Tuned in epa.py, validated across the same
+# six windows in epa_windows.py -- every window positive, +0.0011 to
+# +0.0034, with all six independently selecting scale=200.
+EPA_SCALE = 200     # rating points per unit of net EPA/play
+EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
+
 
 def rolling_hfa(games, window=5, prior=0.5631):
     """
@@ -52,7 +58,8 @@ def rolling_hfa(games, window=5, prior=0.5631):
 
 def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
             hfa=None, qb_map=None, qb_scale=0.0, qb_alpha=0.10,
-            qb_beta=0.03, qb_init=0.0):
+            qb_beta=0.03, qb_init=0.0, epa_map=None, epa_scale=0.0,
+            epa_alpha=0.15):
     """
     Walk the games in chronological order. For each game: predict, record,
     then update. The prediction uses only ratings built from PRIOR games,
@@ -79,6 +86,11 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
                T for a team. League mean EPA/dropback is about 0.042;
                0.0 is a mild penalty reflecting that debut starters are
                usually below average. Not tuned.
+    epa_map    optional dict (game_id, team) -> (off_epa, def_epa) per play,
+               from epa_test.team_game_epa. Enables the EPA adjustment.
+    epa_scale  rating points per unit of net-EPA differential. 0 disables
+               it, which is the control condition.
+    epa_alpha  EWMA rate for a team's offensive and defensive EPA.
     skip_late  if True, still predict REG weeks 17-18 but don't learn from
                them. Tested and rejected (see RESULTS.md); kept for
                reproducibility.
@@ -93,6 +105,11 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
     use_qb = qb_map is not None and qb_scale != 0.0
     Q = defaultdict(lambda: qb_init)
     T = defaultdict(lambda: qb_init)
+
+    # EPA state: per-play offensive and defensive EWMAs. Net rating is
+    # offence minus defence allowed, so higher is better.
+    use_epa = epa_map is not None and epa_scale != 0.0
+    OFF, DEF = {}, {}
 
     for g in games.itertuples():
 
@@ -122,8 +139,17 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
             dev_a = Q[a_qb[0]] - T[g.away_team] if a_qb else 0.0
             adj = qb_scale * (dev_h - dev_a)
 
+        # EPA adjustment: Elo updates on who won, scaled by margin. EPA
+        # per play measures how a team actually moved the ball, which is
+        # less noisy than the scoreboard. The two correlate ~0.8; the
+        # residual test (epa_test.py) shows Elo is wrong where they part.
+        if use_epa:
+            net_h = OFF.get(g.home_team, 0.0) - DEF.get(g.home_team, 0.0)
+            net_a = OFF.get(g.away_team, 0.0) - DEF.get(g.away_team, 0.0)
+            adj += epa_scale * (net_h - net_a)
+
         # d is the linear predictor: rating gap plus a home offset (the
-        # intercept, in logistic-regression terms) plus any QB adjustment.
+        # intercept, in logistic-regression terms) plus any adjustments.
         d = R[g.home_team] + H_now - R[g.away_team] + adj
 
         # Bradley-Terry in log space, i.e. a sigmoid with base 10:
@@ -172,6 +198,15 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
                 pid, val = qb
                 Q[pid] += qb_alpha * (val - Q[pid])
                 T[team] += qb_beta * (val - T[team])
+
+        if use_epa:
+            for team in (g.home_team, g.away_team):
+                entry = epa_map.get((g.game_id, team))
+                if entry is None:
+                    continue
+                o, d_ = entry
+                OFF[team] = OFF.get(team, o) + epa_alpha * (o - OFF.get(team, o))
+                DEF[team] = DEF.get(team, d_) + epa_alpha * (d_ - DEF.get(team, d_))
 
     return np.array(E_all), np.array(S_all), dict(R)
 
@@ -248,6 +283,7 @@ def report(label, results, cols=('k', 'H', 'rho')):
 
 if __name__ == '__main__':
     from qb_data import build_qb_map
+    from epa_test import team_game_epa
 
     games = load_games()
 
@@ -308,14 +344,19 @@ if __name__ == '__main__':
     # it from rolling H.
     _, _, k_s, H_s, rho_s = fixed[0]
     qb_map = build_qb_map(games, verbose=False)
+    epa_map = team_game_epa()
     E, S, R = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True,
-                      qb_map=qb_map, qb_scale=QB_SCALE, qb_alpha=QB_ALPHA)
+                      qb_map=qb_map, qb_scale=QB_SCALE, qb_alpha=QB_ALPHA,
+                      epa_map=epa_map, epa_scale=EPA_SCALE,
+                      epa_alpha=EPA_ALPHA)
     theta = (f'k={k_s}, H={H_s}, rho={rho_s}, '
-             f'qb_scale={QB_SCALE}, qb_alpha={QB_ALPHA}')
+             f'qb_scale={QB_SCALE}, qb_alpha={QB_ALPHA}, '
+             f'epa_scale={EPA_SCALE}, epa_alpha={EPA_ALPHA}')
 
-    # no-QB reference on the same games, so the header numbers are
-    # directly comparable
+    # references on the same games, so the header numbers are comparable
     E0, S0, _ = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True)
+    Eq, Sq, _ = run_elo(games, k=k_s, H=H_s, rho=rho_s, mov=True,
+                        qb_map=qb_map, qb_scale=QB_SCALE, qb_alpha=QB_ALPHA)
 
     # --- Vegas benchmark ---------------------------------------------
     # spread_line is the market's predicted margin (positive = home
@@ -342,8 +383,9 @@ if __name__ == '__main__':
         actual=('S', 'mean')).round(3))
 
     print(f'\nbaseline (always home)  Acc {(S > 0.5).mean():.4f}')
-    print(f'elo, no QB              Acc {Accuracy(E0, S0):.4f}  L {L(E0, S0):.4f}')
-    print(f'elo at theta*           Acc {Accuracy(E, S):.4f}  L {L(E, S):.4f}')
+    print(f'elo + mov               Acc {Accuracy(E0, S0):.4f}  L {L(E0, S0):.4f}')
+    print(f'  + qb                  Acc {Accuracy(Eq, Sq):.4f}  L {L(Eq, Sq):.4f}')
+    print(f'  + epa (theta*)        Acc {Accuracy(E, S):.4f}  L {L(E, S):.4f}')
     print(f'theta* = ({theta})\n')
 
     for team, rating in sorted(R.items(), key=lambda x: -x[1]):

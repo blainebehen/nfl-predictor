@@ -7,22 +7,38 @@ All probabilities are from the home team's perspective.
 
 ## Scoreboard
 
-Held out on 2019–2025 (1,960 games), with all parameters tuned on earlier
-seasons only:
+All from a single run of elo.py over 7,278 completed games, so the rows are
+directly comparable:
 
 | model                 | Acc    | L      |
 |-----------------------|--------|--------|
 | always predict 0.5    | 0.5000 | 0.6931 |
 | always pick home team | 0.5631 | —      |
-| Elo + MOV             | 0.6388 | 0.6374 |
-| Elo + MOV + QB        | 0.6449 | 0.6302 |
-| Vegas closing line    | 0.6611 | 0.6140 |
+| Elo + MOV             | 0.6406 | 0.6310 |
+| + QB adjustment       | 0.6433 | 0.6289 |
+| + team EPA            | 0.6441 | 0.6266 |
+| Vegas closing line    | 0.6610 | 0.6140 |
 
-In-sample over all 7,276 games the same model reaches L 0.6249 / Acc 0.6462,
-but that figure is the best of many trials on the scoring set and should be
-read as optimistic.
+These are in-sample: hyperparameters were chosen as the best of hundreds of
+trials on the same games, so they are optimistically biased. Held out on
+2019–2025, with everything tuned on earlier seasons only:
 
-theta* = (k=20, H=50, rho=0.50, mov=True, qb_scale=600, qb_alpha=0.02)
+| model       | held-out L |
+|-------------|------------|
+| Elo + MOV   | 0.6400     |
+| + QB        | 0.6344     |
+| + team EPA  | 0.6318     |
+
+The model closes about 80% of the log-loss distance between an uninformed
+prediction and the market. QB and EPA together account for roughly a third
+of what Elo + MOV alone left on the table.
+
+theta* = (k=20, H=50, rho=0.50, mov=True, qb_scale=600, qb_alpha=0.02,
+          epa_scale=200, epa_alpha=0.15)
+
+Held-out figures drift by a thousandth or two between runs as nflverse
+refreshes and the current season accumulates. Compare features within a
+single run, not across runs.
 
 ## Adopted
 
@@ -45,6 +61,45 @@ sacks. Coverage is 99.7% of team-games; the rest contribute no adjustment.
 Sanity check on the measure: career leaders are Mahomes, Jackson, Manning,
 Allen, Rodgers, Brees, Brady; trailers are Harrington, D.Carr, Sanchez. It
 agrees with what any football fan would say.
+
+**Team EPA.** Elo updates on who won, scaled by margin of victory. EPA per
+play measures how a team actually moved the ball, which is less noisy than
+the scoreboard — a team that gains 6.5 yards a play and loses on a late
+turnover played better than the result says.
+
+Offence is passing + rushing EPA per play (receiving would double-count the
+same plays); defence is not shipped and is recovered as the opponent's
+offensive EPA in the same game. Both are EWMAs read before a game and
+updated after. The adjustment is epa_scale × (net_home − net_away), where net
+is offence minus defence allowed.
+
+The residual test (epa_test.py) gives a monotone gradient across octiles of
+the differential, with both tails past 3 SE:
+
+| octile | resid   | t    |
+|--------|---------|------|
+| 1      | −0.0457 | −2.9 |
+| 2      | −0.0622 | −3.9 |
+| 3      | −0.0092 | −0.5 |
+| 4      | −0.0059 | −0.4 |
+| 5      | −0.0137 | −0.8 |
+| 6      | −0.0014 | −0.1 |
+| 7      | +0.0546 | +3.7 |
+| 8      | +0.0526 | +4.0 |
+
+Across six windows on top of the QB model (epa_windows.py): +0.0029,
++0.0020, +0.0013, +0.0011, +0.0034, and +0.0027 on the combined 2019–2025
+window. Every window positive, and all six independently selected scale=200
+— stronger evidence than the loss numbers, since a feature fitting noise
+would produce scattered parameters.
+
+The profile differs from the QB adjustment in an informative way. QB ranged
++0.0037 to +0.0121, large and variable, biggest in the COVID seasons when
+starters moved around. EPA is +0.0011 to +0.0034, small and uniform. That is
+what a refinement looks like against new information: EPA is not telling the
+model something it did not know, it is telling it the same thing with less
+noise. Consistent with the +0.796 correlation between the EPA differential
+and the model's own probability.
 
 **rho wants 0.50, not 0.33.** FiveThirtyEight's NFL Elo uses 0.33 offseason
 reversion. This data prefers 0.50 in every run. The most strongly identified
@@ -213,17 +268,25 @@ discarded once the raw rates showed there is no break to model.
 
 ## Calibration
 
-Predicted vs actual agree within 0.035 in every bucket and within 0.017
-across the three largest (4,754 of 7,276 games). The largest deviation is in
-the smallest bucket (n=367), about 1.5 SE — not significant. Measured
-in-sample.
+| predicted | n     | predicted | actual |
+|-----------|-------|-----------|--------|
+| 0.0–0.3   | 467   | 0.237     | 0.269  |
+| 0.3–0.4   | 748   | 0.354     | 0.346  |
+| 0.4–0.5   | 1,281 | 0.454     | 0.444  |
+| 0.5–0.6   | 1,576 | 0.551     | 0.554  |
+| 0.6–0.7   | 1,546 | 0.648     | 0.636  |
+| 0.7–0.8   | 1,151 | 0.745     | 0.740  |
+| 0.8–1.0   | 509   | 0.845     | 0.875  |
+
+Agreement is within 0.032 in every bucket and within 0.012 across the five
+largest (6,302 of 7,278 games). Both largest deviations sit in the two
+smallest buckets and are about 1.4 SE — not significant. Measured in-sample.
 
 ## Not yet tried
 
-The residual scan suggests the remaining gains are in better team ratings
-rather than game-level covariates.
-
-- Rolling team EPA (offense and defense) as features
+- Joint tuning of team, QB and EPA parameters — currently staged
+- A logistic regression with all terms as features, rather than additive
+  adjustments to a rating
 - Separate offensive and defensive ratings
 - Clinch-status feature for late-season games
 - A joint tune of team and QB parameters — currently staged, with k/H/rho
