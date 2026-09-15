@@ -13,13 +13,14 @@ WINDOW_GRID = [3, 5, 8, 12]     # seasons of history behind a rolling H
 
 TEST_START = 2019   # held-out evaluation window: this season onward
 
-# Adopted QB adjustment. Tuned in qb.py, validated across six held-out
-# windows in qb_windows.py -- every window positive, +0.0037 to +0.0121.
+# Adopted QB adjustment. Tuned and validated across six held-out
+# windows in research/qb.py -- every window positive, +0.0037 to
+# +0.0121.
 QB_SCALE = 600      # rating points per unit of EPA/dropback
 QB_ALPHA = 0.02     # EWMA rate for a quarterback's rating
 
-# Adopted team-EPA adjustment. Tuned in epa.py, validated across the same
-# six windows in epa_windows.py -- every window positive, +0.0011 to
+# Adopted team-EPA adjustment. Tuned and validated across the same six
+# windows in research/epa.py -- every window positive, +0.0011 to
 # +0.0034, with all six independently selecting scale=200.
 EPA_SCALE = 200     # rating points per unit of net EPA/play
 EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
@@ -30,12 +31,11 @@ EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
 #
 # Use the RANK-FROZEN flag, not "has clinched a berth". A team that has
 # secured a place but is still fighting for seeding has everything to play
-# for; pooling it in dilutes the effect roughly fourfold. Build the map
-# with clinch_wide.build_wide_map and keep the 'locked' label:
+# for; pooling it in dilutes the effect roughly fourfold:
 #
-#   lab = build_wide_map(games)
-#   cmap = {k: 1.0 for k, v in lab.items() if v == 'locked'}
-#   run_elo(..., clinch_map=cmap, clinch_scale=CLINCH_SCALE)
+#   from features import build_clinch_map
+#   run_elo(..., clinch_map=build_clinch_map(games),
+#           clinch_scale=CLINCH_SCALE)
 #
 # Four of six windows positive, but five of six independently selected
 # 130 -- the only stable parameter any version of this produced. Nothing
@@ -44,6 +44,7 @@ EPA_ALPHA = 0.15    # EWMA rate for a team's offensive and defensive EPA
 #
 # Do NOT reach for skip_games instead. Excluding these games from the
 # update was tested on exactly this flag and loses, 1 of 6 windows.
+# Evidence: research/clinch.py, writeup in RESULTS.md.
 CLINCH_SCALE = 130  # rating points docked from a rank-frozen team
 
 
@@ -64,7 +65,7 @@ def rolling_hfa(games, window=5, prior=0.5631):
     (the all-time home-win rate).
 
     TESTED, NOT ADOPTED. theta* uses a fixed H. Across six held-out test
-    windows (holdout_windows.py) this beat a fixed H on exactly one --
+    windows this beat a fixed H on exactly one --
     2019-2021 -- and was within +/-0.0017 or worse on the rest. Kept here
     so the comparison stays reproducible.
     """
@@ -110,13 +111,13 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
                0.0 is a mild penalty reflecting that debut starters are
                usually below average. Not tuned.
     epa_map    optional dict (game_id, team) -> (off_epa, def_epa) per play,
-               from epa_test.team_game_epa. Enables the EPA adjustment.
+               from features.team_game_epa. Enables the EPA adjustment.
     epa_scale  rating points per unit of net-EPA differential. 0 disables
                it, which is the control condition.
     epa_alpha  EWMA rate for a team's offensive and defensive EPA.
     clinch_map optional dict (game_id, team) -> 1.0 for a team that has
                clinched a playoff berth entering that game, from
-               clinch.build_clinch_map. Absent keys count as 0.
+               features.build_clinch_map. Absent keys count as 0.
     clinch_scale rating points docked from a team that has clinched. 0
                disables it, which is the control condition. Eliminated
                teams are deliberately NOT flagged -- they show the
@@ -182,7 +183,7 @@ def run_elo(games, k=20, H=55, rho=0.33, mov=False, skip_late=False,
         # EPA adjustment: Elo updates on who won, scaled by margin. EPA
         # per play measures how a team actually moved the ball, which is
         # less noisy than the scoreboard. The two correlate ~0.8; the
-        # residual test (epa_test.py) shows Elo is wrong where they part.
+        # residual test (research/epa.py) shows where Elo is wrong.
         if use_epa:
             net_h = OFF.get(g.home_team, 0.0) - DEF.get(g.home_team, 0.0)
             net_a = OFF.get(g.away_team, 0.0) - DEF.get(g.away_team, 0.0)
@@ -334,8 +335,7 @@ def report(label, results, cols=('k', 'H', 'rho')):
 
 
 if __name__ == '__main__':
-    from qb_data import build_qb_map
-    from epa_test import team_game_epa
+    from features import build_qb_map, team_game_epa
 
     games = load_games()
 

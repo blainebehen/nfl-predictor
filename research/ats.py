@@ -20,13 +20,19 @@ to the posted line, and bet the side the model prefers. A game is a push
 when the margin lands exactly on the line -- pushes are refunded, so they
 are excluded rather than scored as half-wins.
 """
+
+import sys
+import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import numpy as np
 from scipy.stats import norm
 
 from data import load_games
 from elo import run_elo, season_mask, Accuracy, L, QB_SCALE, QB_ALPHA
-from qb import K_STAR, H_STAR, RHO_STAR
-from qb_data import build_qb_map
+from features import build_qb_map
+
+K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
 
 SPREAD_SD = 13.5      # SD of (actual margin - closing spread)
 BREAK_EVEN = 110 / 210

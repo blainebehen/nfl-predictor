@@ -51,12 +51,17 @@ already knew those away teams were good or bad, and the apparent travel
 effect was team quality the whole time. Worth keeping as the clearest
 example in this repo of why raw rates mislead.
 """
+
+import sys
+import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
 from data import load_games
 from elo import run_elo, QB_SCALE, QB_ALPHA
-from qb_data import build_qb_map
+from features import build_qb_map
 
 K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
 

@@ -15,12 +15,17 @@ building. And a single cell clearing 2 inside a feature whose other cells
 are flat is a multiple-comparisons artifact, not a finding -- travel's
 1500-2000 mile bucket was exactly that.
 """
+
+import sys
+import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
 from data import load_games
 from elo import run_elo, QB_SCALE, QB_ALPHA
-from qb_data import build_qb_map
+from features import build_qb_map
 
 K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
 MIN_N = 100          # ignore buckets too small to read

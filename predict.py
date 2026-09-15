@@ -21,7 +21,7 @@ ones where they part.
 STARTER INFERENCE
 -----------------
 The QB adjustment needs to know who is STARTING, which for an unplayed
-game is unknown -- qb_data only records who actually played. Starters are
+game is unknown -- features.py only records who actually played. Starters are
 inferred by intersecting two sources:
 
   1. the current season's roster (who is on the team NOW), which catches
@@ -51,8 +51,7 @@ import nflreadpy as nfl
 
 from data import load_games, RELOCATED
 from elo import run_elo, QB_SCALE, QB_ALPHA, EPA_SCALE, EPA_ALPHA
-from qb_data import build_qb_map, current_season
-from epa_test import team_game_epa
+from features import build_qb_map, team_game_epa, current_season
 
 K, H, RHO = 20, 50, 0.50
 

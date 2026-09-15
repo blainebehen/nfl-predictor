@@ -130,35 +130,38 @@ RESULTS.md has all three analyses, plus a correction: an earlier reading of
 the smoothed data called the home-field dip a permanent collapse, which the
 raw per-season rates do not support.
 
-## Files
+## Layout
 
-- data.py — loads nflverse schedules, merges relocated franchises
-- elo.py — the model, hyperparameter search, held-out evaluation,
-  calibration, and the Vegas benchmark
-- qb_data.py — extracts each game's starting QB and his EPA per dropback
-- qb.py — tunes the QB adjustment against a no-QB control
-- qb_windows.py — the QB adjustment across six held-out windows
-- holdout_windows.py — the same test applied to season-varying home field
-- hfa_trend.py — raw home-win rate by season, unsmoothed
-- rest_travel.py — residual analysis for rest and travel (both rejected)
-- residual_scan.py — every schedule column tested the same way
-- epa_test.py — residual analysis for rolling team EPA (adopted)
-- epa.py / epa_windows.py — tuning and six-window validation for EPA
-- clinch.py — playoff standings and clinch flags, leakage-free
-- clinch_test.py — the residual test that came back flat
-- clinch_probe.py — the same data split by flag, where the effect is
-- clinch_windows.py / clinch_fixed.py — six-window validation of the
-  clinched-a-berth flag, tuned and at a fixed scale
-- clinch_wide.py — seed-range logic: in / cannot-improve / rank-frozen
-- clinch_wide_windows.py — six windows on cannot-improve + rank-frozen
-- locked_test.py — rank-frozen alone, adjusting versus excluding
-- predict.py — forecasts upcoming games from the current ratings, running
-  the QB-only and theta* models side by side, and inferring each team's
-  starting QB from the roster and last season's attempts
-- find_qb.py — looks up QB ids for manual starter overrides
-- score.py — scores both saved models against results and the closing
-  spread
-- RESULTS.md — findings log, including rejected features and a correction
+The model is five files. Everything that produced the numbers above lives
+in `research/`, and nothing in the model imports from it — the split is
+deliberate. The EPA extractor used to live in `epa_test.py` and the clinch
+flags in `clinch.py`, so the live forecast depended on the scripts that
+were investigating those features.
+
+    data.py        nflverse schedules, relocated franchises merged
+    features.py    QB values, team EPA, playoff status — everything the
+                   model reads about a game, all leakage-free
+    elo.py         the model: ratings, adjustments, tuning grids,
+                   held-out evaluation, calibration, Vegas benchmark
+    predict.py     forecasts upcoming games, running the QB-only and
+                   theta* models side by side
+    score.py       scores both saved models against results and the line
+    find_qb.py     looks up QB ids for manual starter overrides
+
+    research/qb.py              QB adjustment: tuning + six windows
+    research/epa.py             team EPA: residuals, tuning, six windows
+    research/clinch.py          clinch status, all three passes
+    research/rest_travel.py     rest and travel (both rejected)
+    research/residual_scan.py   every schedule column, same test
+    research/hfa_trend.py       raw home-win rate by season, unsmoothed
+    research/ats.py             against-the-spread evaluation
+
+Each research file takes a subcommand, since several analyses share the
+expensive setup:
+
+    python research/qb.py tune
+    python research/clinch.py residuals
+    python research/epa.py windows
 
 ## Running it
 

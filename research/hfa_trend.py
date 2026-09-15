@@ -11,6 +11,11 @@ they had passed.
 Per-season standard error is about 0.030 (n ~ 270), so single-season
 swings of a few points are noise.
 """
+
+import sys
+import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from data import load_games
 
 if __name__ == '__main__':

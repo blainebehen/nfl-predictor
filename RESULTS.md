@@ -5,6 +5,11 @@ Validation: walk-forward by construction — each prediction uses only ratings
 built from prior games, so every forecast is out-of-sample.
 All probabilities are from the home team's perspective.
 
+Layout: the model is `data.py`, `features.py`, `elo.py`, `predict.py` and
+`score.py` at the top level. Everything that produced the numbers below
+lives in `research/` and is imported by nothing — `research/qb.py`,
+`research/epa.py`, `research/clinch.py`, plus the rejected-feature scans.
+
 ## Scoreboard
 
 All from a single run of elo.py over 7,278 completed games, so the rows are
@@ -73,7 +78,7 @@ offensive EPA in the same game. Both are EWMAs read before a game and
 updated after. The adjustment is epa_scale × (net_home − net_away), where net
 is offence minus defence allowed.
 
-The residual test (epa_test.py) gives a monotone gradient across octiles of
+The residual test (research/epa.py) gives a monotone gradient across octiles of
 the differential, with both tails past 3 SE:
 
 | octile | resid   | t    |
@@ -87,7 +92,7 @@ the differential, with both tails past 3 SE:
 | 7      | +0.0546 | +3.7 |
 | 8      | +0.0526 | +4.0 |
 
-Across six windows on top of the QB model (epa_windows.py): +0.0029,
+Across six windows on top of the QB model (research/epa.py): +0.0029,
 +0.0020, +0.0013, +0.0011, +0.0034, and +0.0027 on the combined 2019–2025
 window. Every window positive, and all six independently selected scale=200
 — stronger evidence than the loss numbers, since a feature fitting noise
@@ -114,7 +119,7 @@ coaching continuity rather than venue — a judgment call, not an obvious one.
 ## The QB adjustment across six windows
 
 Each window tuned on everything strictly before it, then scored on the
-window itself (qb_windows.py). diff = no-QB L − with-QB L:
+window itself (research/qb.py). diff = no-QB L − with-QB L:
 
 | window    | n     | no QB  | with QB | diff    | tuned                |
 |-----------|-------|--------|---------|---------|----------------------|
@@ -145,7 +150,7 @@ nothing to play for resting starters — real contamination the market
 prices and a rating system cannot see.
 
 Stake is computed per team entering a game, from games completed strictly
-before it, using win totals only (`clinch.py`). Tiebreakers are ignored,
+before it, using win totals only (`features.py`). Tiebreakers are ignored,
 which makes the flags conservative. Sanity check on 2024 Week 18: the five
 teams flagged live are exactly the five that still had something to play
 for, and Kansas City — which had locked the AFC's top seed and sat
@@ -192,7 +197,7 @@ So the model term flags clinched teams only, and docks
 inert outside REG weeks 15+, so even a real effect can only move
 whole-sample L slightly.
 
-**Six windows, scale tuned inside each training span (`clinch_windows.py`):**
+**Six windows, scale tuned inside each training span (`research/clinch.py`):**
 
 | window    | n     | theta* | +clinch | diff    | tuned | late-only diff |
 |-----------|-------|--------|---------|---------|-------|----------------|
@@ -205,7 +210,7 @@ whole-sample L slightly.
 
 Four of six positive, one exactly zero, one negative by 0.0002, and the
 selected scale wandering across 0, 50 and 75. Held at a fixed 50 instead
-(`clinch_fixed.py`) it is five of six, with a smooth in-sample loss curve
+(`research/clinch.py`) it is five of six, with a smooth in-sample loss curve
 on late games — 0.6132, 0.6118, 0.6109, **0.6104**, 0.6109, 0.6141,
 0.6235 across scales 0 to 160 — a clean interior minimum and symmetric
 rise either side, which a feature fitting noise does not produce.
@@ -221,7 +226,7 @@ has secured a place but is still fighting for seeding has everything to
 play for. The population is any team that **cannot improve its position
 by winning** — whatever seed that is.
 
-`clinch_wide.py` splits the clinched teams three ways, each a strict
+`features.py` splits the clinched teams three ways, each a strict
 subset of the last: `in` (seed still live), `nogain` (cannot climb, could
 still fall), `locked` (rank cannot move in either direction). The
 shortfall is a clean dose-response:
@@ -244,7 +249,7 @@ nothing. The gradient the first residual test went looking for and could
 not find does exist; it just needed the right variable.
 
 **But sharpening the flag made the model worse, not better.** Six windows
-on nogain+locked (`clinch_wide_windows.py`): four of six binary, three of
+on nogain+locked (`research/clinch.py`): four of six binary, three of
 six graded, scales scattered across 50/80/115 and 115/155/200. Narrowing
 multiplied the effect size by 2.3× and cut the flagged population by
 3.2×, from 626 team-games to 193. The product shrank and the variance per
@@ -253,7 +258,7 @@ window grew.
 ## Clinch status, third pass: rank-frozen, adjust versus exclude
 
 `locked` alone is 56 team-games in 55 games — 0.76% of the data, about
-two team-games a season. `locked_test.py` runs both mechanisms on exactly
+two team-games a season. `research/clinch.py` runs both mechanisms on exactly
 that population.
 
 **Excluding them fails cleanly.** Predict and score the game but do not
@@ -361,7 +366,7 @@ lower for teams with good quarterbacks. Elo partitions the credit itself.
 **Season-varying home-field advantage.** Estimated from the prior five
 seasons' home-win rate, it looked promising — +0.0001 in-sample, +0.0033 held
 out on 2019–2025. But the test window opens on the anomalous 2019–2021
-seasons, so it needed checking elsewhere (holdout_windows.py):
+seasons, so it needed checking elsewhere:
 
 | window    | n     | fixed L | rolling L | diff    |
 |-----------|-------|---------|-----------|---------|
@@ -381,7 +386,7 @@ Note these H comparisons predate the QB adjustment — both arms lacked it, so
 the comparison was fair on its own terms, but it was run against a weaker
 model than the current one.
 
-**Everything else in the schedule data.** residual_scan.py runs every
+**Everything else in the schedule data.** research/residual_scan.py runs every
 nflverse schedule column through the same residual test: divisional game,
 roof type, playing surface, day of week, week of season, temperature, wind,
 and the over/under total. Across roughly fifty buckets the largest |t| is
@@ -414,7 +419,7 @@ market" circular.
 **Rest and travel.** Both are reasonable ideas with a clear mechanism behind
 them — a team off a bye against a team on a short week should have an edge,
 and a coast-to-coast trip should cost something. Neither survives inspection
-(rest_travel.py). Measured as
+(research/rest_travel.py). Measured as
 mean model residual S − E by bucket, so team quality is already removed:
 
 | rest diff (days) | n     | resid   | t    |
@@ -455,7 +460,7 @@ targeted fix.
 
 An earlier version of this file claimed home-field advantage collapsed after
 2020 and stayed low, based on the smoothed rolling-H table. **That was
-wrong.** The raw per-season home-win rates (hfa_trend.py):
+wrong.** The raw per-season home-win rates (research/hfa_trend.py):
 
 | period    | home-win rate |
 |-----------|---------------|
@@ -509,7 +514,7 @@ smallest buckets and are about 1.4 SE — not significant. Measured in-sample.
   enough data to calibrate
 - A joint tune of team and QB parameters — currently staged, with k/H/rho
   fixed at theta* while the QB grid runs
-- Against-the-spread evaluation is written (ats.py) but not yet finalised
+- Against-the-spread evaluation is written (research/ats.py) but not yet finalised
 - What drove the 2019–2021 dip. Empty stadiums explain 2020 but not the
   seasons either side of it.
 - Why 2019–2021 was harder to predict overall — both models degrade by
@@ -573,7 +578,7 @@ diagnostic, surfacing in a completely different part of the code.
 One case the rule cannot fix: a backup who outthrew the starter because the
 starter was injured. San Francisco picks M.Jones over B.Purdy and Cincinnati
 picks J.Flacco over J.Burrow on raw attempts. Those need manual correction
-via STARTER_OVERRIDES, with find_qb.py to look up player ids. Rookies who won
+via STARTER_OVERRIDES, with find_research/qb.py to look up player ids. Rookies who won
 a camp battle have no attempt history and hit the same problem; predict.py
 prints a warning naming any team whose presumed starter has zero prior
 attempts.
