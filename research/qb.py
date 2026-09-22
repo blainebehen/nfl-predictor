@@ -32,7 +32,7 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from data import load_games
-from elo import run_elo, season_mask, Accuracy, L, TEST_START
+from elo_experiments import run_elo, season_mask, Accuracy, L, TEST_START
 from features import build_qb_map
 
 # theta* for the team model, held fixed while the QB parameters are tuned.

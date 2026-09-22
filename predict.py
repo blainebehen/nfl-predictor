@@ -1,47 +1,21 @@
 """
-Forecast upcoming games from the current model state.
+Predict this week's games.
 
-TWO MODELS ARE FORECAST SIDE BY SIDE.
+    python predict.py 4        (predicts week 4)
 
-  E_qb    Elo + MOV + the QB adjustment. This is what produced the Week 1
-          2026 forecast, before team EPA was wired into the live path.
-  E_full  theta* -- the same thing plus the team-EPA adjustment, which is
-          adopted in RESULTS.md and validated across six windows.
+I run two versions side by side and save both, so I can see which one
+actually does better on real games:
 
-Backtests say E_full is the better model by 0.0026 in held-out L. That is
-a backtest talking. Running both forward and scoring both on the same
-games is the only way to watch the claim survive contact with games that
-did not exist when either was tuned, so both are written to the CSV every
-week and score.py reports them against each other and against the line.
+  E       Elo + QB. This is the model I started the 2026 season with.
+  E_full  Elo + QB + team EPA. Better in the backtest, but that's on past
+          data. The live season is the real test.
 
-Expect the two to agree on most games -- the EPA differential correlates
-+0.80 with the model's own probability. The weeks worth watching are the
-ones where they part.
-
-STARTER INFERENCE
------------------
-The QB adjustment needs to know who is STARTING, which for an unplayed
-game is unknown -- features.py only records who actually played. Starters are
-inferred by intersecting two sources:
-
-  1. the current season's roster (who is on the team NOW), which catches
-     trades and free-agent signings that last season's stats cannot; and
-  2. pass attempts in the previous season's REG weeks 1-16, to pick which
-     of a team's rostered QBs is actually the starter.
-
-Attempts are counted wherever the player threw them, not just for his
-current team, so a quarterback who changed teams keeps his history.
-
-Excluding weeks 17-18 from step 2 matters. The naive rule -- "whoever
-started most recently" -- picks whoever took snaps in Week 18, which for
-any team with its playoff seed locked is a third-stringer resting the
-starter. That produced Kansas City fielding C.Oladokun and Denver
-fielding J.Stidham. Same late-season contamination documented in
-RESULTS.md, in a different place.
-
-Remaining failure mode: a rookie or an unproven QB winning a camp battle
-has no attempt history and will lose to a rostered veteran backup. Those
-go in STARTER_OVERRIDES. Always eyeball the printed starter column.
+Picking the starting QB: for games that haven't happened yet, I don't know
+who will start. So for each team I take the QBs on the current roster and
+pick the one who threw the most passes last season (weeks 1-16 only, since
+teams that have already locked in a playoff spot rest starters in weeks
+17-18). That misses rookies and injuries, so STARTER_OVERRIDES below lets
+me set a starter by hand. Always check the starters column in the output.
 """
 import sys
 from collections import defaultdict
@@ -57,8 +31,7 @@ K, H, RHO = 20, 50, 0.50
 
 SEASON = current_season()
 
-# Manual starter overrides: (team) -> player_id. Use when the assumed
-# starter is known to be wrong -- a trade, a retirement, an injury.
+# Manual starter picks: team -> player_id. Use find_qb.py to look up ids.
 STARTER_OVERRIDES = {
     # 'SF': '00-0036972',                 # Mac Jones (289 att)
     'SF': '00-0037834',                 # Brock Purdy (224 att)
@@ -84,21 +57,15 @@ STARTER_OVERRIDES = {
 
 
 def infer_starters(season, last_season):
-    """
-    Each team's presumed starter for the upcoming season.
-
-    Roster tells us who is on the team; last season's attempts tell us
-    which of them starts. See the module docstring for why weeks 17-18
-    are excluded and why attempts are counted across all teams.
-    """
-    # who is on each roster now
+    """Each team's likely starter: rostered QB with the most attempts last season."""
+    # QBs on each roster right now
     r = nfl.load_rosters([season]).to_pandas()
     if 'week' in r.columns and r.week.notna().any():
         r = r[r.week == r.week.max()]           # latest weekly snapshot
     qbs = r[(r.position == 'QB') & (r.status == 'ACT')].copy()
     qbs['team'] = qbs.team.replace(RELOCATED)
 
-    # how much each of them threw last season, wherever he threw it
+    # their pass attempts last season (for any team), weeks 1-16
     ps = nfl.load_player_stats([last_season]).to_pandas()
     prior = ps[(ps.position == 'QB') & (ps.attempts > 0)
                & (ps.season_type == 'REG') & (ps.week <= 16)]
@@ -124,15 +91,9 @@ def infer_starters(season, last_season):
 
 def current_state(last_season=None):
     """
-    Everything needed to forecast: two sets of team ratings (one per
-    model), QB ratings, team EPA ratings, presumed starters, and a
-    player-id to name lookup -- all after every completed game.
-
-    The QB and EPA ratings are replayed here rather than pulled out of
-    run_elo: each is an EWMA over its own observations and the game
-    order, independent of the Elo state, so it can be computed
-    separately. Elo ratings cannot -- they depend on the adjustments in
-    force -- which is why run_elo is called twice.
+    Replay every completed game to get where things stand now: team
+    ratings for both models, QB ratings, team EPA, likely starters,
+    and player names.
     """
     last_season = last_season or (SEASON - 1)
 
@@ -140,17 +101,18 @@ def current_state(last_season=None):
     qb_map = build_qb_map(games, verbose=False)
     epa_map = team_game_epa()
 
-    # model 1: QB only -- the Week 1 2026 model
+    # model 1: Elo + QB
     _, _, R_qb = run_elo(games, k=K, H=H, rho=RHO, mov=True,
                          qb_map=qb_map, qb_scale=QB_SCALE,
                          qb_alpha=QB_ALPHA)
 
-    # model 2: theta* -- QB plus team EPA
+    # model 2: Elo + QB + team EPA
     _, _, R_full = run_elo(games, k=K, H=H, rho=RHO, mov=True,
                            qb_map=qb_map, qb_scale=QB_SCALE,
                            qb_alpha=QB_ALPHA, epa_map=epa_map,
                            epa_scale=EPA_SCALE, epa_alpha=EPA_ALPHA)
 
+    # current QB ratings and team EPA, same updates as in run_elo
     Q = defaultdict(float)
     OFF, DEF = {}, {}
     for g in games.itertuples():
@@ -168,7 +130,7 @@ def current_state(last_season=None):
 
     starters, names = infer_starters(SEASON, last_season)
 
-    # fall back to stats names for anyone not on a current roster
+    # names for anyone not on a current roster
     stat_names = (nfl.load_player_stats([last_season]).to_pandas()
                     .drop_duplicates('player_id')
                     .set_index('player_id').player_name.to_dict())
@@ -183,12 +145,10 @@ def current_state(last_season=None):
 def predict_week(R_qb, R_full, Q, net_epa, starters, names, season, week,
                  revert=True):
     """
-    P(home wins) under both models for each scheduled game.
+    Chance the home team wins, under both models, for each game this week.
 
-    revert applies the offseason shrink toward 1500. It belongs on a
-    forecast made before the season's first game and nowhere else -- the
-    ratings handed back by run_elo have already been reverted at the
-    start of any season whose games are in the data.
+    revert: shrink ratings toward 1500 first. Only for a preseason
+    forecast, before any game of the new season has been played.
     """
     sched = nfl.load_schedules().to_pandas()
     upcoming = sched[(sched.season == season) & (sched.week == week)]
@@ -228,7 +188,7 @@ if __name__ == '__main__':
 
     R_qb, R_full, Q, net_epa, starters, names = current_state()
 
-    # Revert only when no game of this season has been played yet.
+    # shrink toward 1500 only if no game this season has been played yet
     played = load_games()
     revert = not (played.season == SEASON).any()
 
@@ -253,12 +213,11 @@ if __name__ == '__main__':
     for away, home, e_qb, e_full, *_ in disagree:
         print(f'  {away} at {home}: qb {e_qb:.3f} -> full {e_full:.3f}')
 
-    print(f'\nStarters come from the {SEASON} roster, ranked by {SEASON - 1} '
-          f'REG wk1-16 attempts.\nRookies and in-week injuries will still be '
-          'wrong -- fix those in\nSTARTER_OVERRIDES before committing.')
+    print('\nCheck the starters above. Fix any wrong ones in '
+          'STARTER_OVERRIDES and rerun.')
 
-    # Save before kickoff. The commit timestamp is what makes a track
-    # record credible; regenerating after the fact would not.
+    # Save before kickoff, and commit, so the timestamp proves the
+    # prediction came first.
     df = pd.DataFrame(rows, columns=COLUMNS)
     df.insert(0, 'week', week)
     df.insert(0, 'season', SEASON)
@@ -272,7 +231,7 @@ if __name__ == '__main__':
         clash = ((old.season == SEASON) & (old.week == week)).sum()
         if clash:
             print(f'\nWARNING: replacing {clash} existing rows for week '
-                  f'{week}. Only legitimate before kickoff.')
+                  f'{week}. Only OK before kickoff.')
         old = old[~((old.season == SEASON) & (old.week == week))]
         df = pd.concat([old, df], ignore_index=True)
     except FileNotFoundError:

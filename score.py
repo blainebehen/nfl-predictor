@@ -1,30 +1,18 @@
 """
-Score saved predictions against results and against the closing spread.
+Score my saved predictions against what actually happened, and against
+the Vegas spread.
 
-This is the only genuinely out-of-sample test in the project. Everything
-in elo.py is a backtest -- honest, walk-forward, but still measured on
-games that existed when the model was built. These predictions were
-committed before kickoff.
+This is the real test. Everything in elo.py is a backtest on past games.
+These predictions were saved and committed before kickoff.
 
-TWO MODELS ARE TRACKED.
+Two models are tracked (see predict.py): E (Elo + QB) and E_full
+(+ team EPA). E_full is blank for Week 1 because I saved Week 1 before
+adding team EPA, and a prediction made after kickoff doesn't count.
 
-  E       Elo + MOV + QB. The Week 1 2026 model.
-  E_full  theta* -- the same plus team EPA.
-
-The backtest says E_full is better by 0.0026 in held-out L. Scoring both
-forward on the same games is how that claim gets tested against games
-neither model was tuned on. E_full is blank for Week 1, which was
-committed before team EPA reached the live path; those games score the
-QB model alone rather than being back-filled, since a forecast written
-after kickoff is not a forecast.
-
-Read the weekly numbers with the sample size in mind. Sixteen games has a
-standard error of about 12 percentage points on accuracy, so a 10-6 week
-and a 6-10 week are both entirely consistent with a 64% model. The record
-only starts to mean anything around midseason. Separating two models that
-differ by 0.003 in L takes far longer than one season -- the honest
-expectation is that a single year cannot resolve them, and the point of
-logging both is to start the clock, not to settle it in November.
+Small samples: one week is 16 games, and accuracy over 16 games has a
+standard error of about 12 percentage points. So a 10-6 week and a 6-10
+week both fit a 64% model. It takes most of a season before the record
+means much, and more than one season to tell two close models apart.
 """
 import numpy as np
 import pandas as pd
@@ -33,7 +21,7 @@ from scipy.stats import norm
 
 SPREAD_SD = 13.5    # SD of (actual margin - closing spread), empirical
 
-MODELS = [('E', 'qb only'), ('E_full', 'theta* (+epa)')]
+MODELS = [('E', 'Elo + QB'), ('E_full', '+ team EPA')]
 
 
 def load_predictions(path='predictions_2026.csv'):
@@ -100,7 +88,7 @@ def score_block(df, label):
         S = outcomes(sub)
         d = ll(sub.E.values, S) - ll(sub.E_full.values, S)
         print(f'  head to head on {int(both.sum())}: '
-              f'{d:+.4f} in L to theta* (positive = theta* ahead)')
+              f'{d:+.4f} log loss in favor of E_full (positive = E_full ahead)')
 
 
 if __name__ == '__main__':
@@ -135,9 +123,8 @@ if __name__ == '__main__':
         for wk in sorted(played.week.unique()):
             score_block(played[played.week == wk], f'week {wk}')
 
-    # Games where the model disagrees most with the line. An edge, if one
-    # exists anywhere, should be largest here -- and these are genuinely
-    # out of sample, unlike the backtested version in ats.py.
+    # Games where my model disagrees with Vegas by 3+ points. If I have
+    # any edge on the betting line, it should show up here.
     has_line = played.spread.notna()
     sub = played[has_line]
     if len(sub):

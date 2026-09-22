@@ -1,5 +1,11 @@
 # NFL win predictor — results log
 
+> **Note:** this is my full, detailed log of every experiment. The short
+> version is in the main README. The experiments here run on
+> `research/elo_experiments.py`, the version of the model with every
+> option I tried, so some file and function names below are from before I
+> simplified the main code.
+
 Data: nflverse schedules via nflreadpy, 1999–2025, 7,276 completed games.
 Validation: walk-forward by construction — each prediction uses only ratings
 built from prior games, so every forecast is out-of-sample.

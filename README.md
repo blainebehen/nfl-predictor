@@ -1,171 +1,113 @@
 # NFL win predictor
 
-An Elo rating model for NFL games, with margin-of-victory scaling and a
-quarterback adjustment, benchmarked against the Vegas closing line.
+A model that predicts who wins NFL games, built on Elo ratings with two
+extra pieces: an adjustment for who's starting at quarterback, and one for
+how efficiently each team has been playing (EPA per play). I compare it
+against the Vegas line and track its picks live during the 2026 season.
 
-Each team carries a rating; before every game the rating difference (plus a
-home-field offset and a QB term) is converted to a win probability, and
-afterward both ratings are updated in proportion to the prediction error.
-This is stochastic gradient descent on log loss for a Bradley-Terry model —
-see the derivation comments in elo.py.
+## How it works
 
-Note this is not vanilla Elo. The margin-of-victory multiplier, offseason
-reversion, and quarterback term are NFL-specific extensions; the QB term is
-what separates these numbers from a textbook implementation.
+Every team has a rating, starting at 1500. To predict a game:
+
+1. Take the home team's rating minus the away team's, plus a bonus for
+   home field.
+2. Adjust for the quarterbacks. Each QB has a rating based on his recent
+   EPA per dropback. The model only uses how far a team's starter is from
+   who they *normally* play, since the team rating already includes that.
+   This is what lets it react when a backup has to start.
+3. Adjust for team EPA per play, offense and defense. EPA measures how
+   well a team actually moved the ball, which is less noisy than the final
+   score.
+4. Convert that to a win probability with the Elo formula:
+   `P(home wins) = 1 / (1 + 10^(-edge/400))`.
+
+After each game, both teams' ratings move based on how surprising the
+result was. Winning by more moves them more, and ratings shrink back
+toward average each offseason as rosters change.
+
+Every game is predicted using only games played before it, so the whole
+backtest is out of sample.
 
 ## Results
 
-7,278 games, 1999-2025. Every prediction uses only ratings built from prior
-games, so the backtest is walk-forward and leakage-free.
+7,278 games, 1999-2025:
 
-| model                 | Acc    | log loss |
-|-----------------------|--------|----------|
-| always predict 0.5    | 0.5000 | 0.6931   |
-| always pick home team | 0.5631 | —        |
-| Elo + MOV             | 0.6406 | 0.6310   |
-| + QB adjustment       | 0.6433 | 0.6289   |
-| + team EPA            | 0.6441 | 0.6266   |
-| Vegas closing line    | 0.6610 | 0.6140   |
+| model                 | accuracy | log loss |
+|-----------------------|----------|----------|
+| always guess 50%      | 0.500    | 0.693    |
+| always pick home team | 0.563    | —        |
+| Elo + margin of victory | 0.641  | 0.631    |
+| + QB adjustment       | 0.643    | 0.629    |
+| + team EPA            | 0.644    | 0.627    |
+| Vegas closing line    | 0.661    | 0.614    |
 
-Held out on 2019-2025, with all parameters tuned on earlier seasons, the
-same three tiers give 0.6400, 0.6344 and 0.6318.
+Log loss is the main score (lower is better). It rewards being confident
+and right, and punishes being confident and wrong, which accuracy doesn't.
 
-The model closes about 80% of the log-loss distance between an uninformed
-prediction and the market. It is well calibrated: bucketed by predicted
-probability, predicted and observed win rates agree within 0.012 across the
-five buckets holding 87% of the games.
+The model tunings above were picked using all these games, so they're a
+little optimistic. As a fairer test, I tuned only on 1999-2018 and scored
+2019-2025: log loss 0.640 → 0.634 → 0.632 for the three versions. Same
+order, same improvements.
 
-## Two features that worked
+The model is also well calibrated: when it says 70%, the home team wins
+about 70% of the time.
 
-### The quarterback adjustment
+It doesn't beat Vegas, and I didn't expect it to. It gets about 80% of the
+way from a coin flip to the Vegas line.
 
-Team Elo absorbs a franchise's average QB quality — a team that wins with an
-elite starter accumulates rating for it. What Elo cannot see is who is
-actually playing on a given Sunday. That blind spot is a large part of the
-market's information advantage over a pure team rating.
+## What I learned
 
-Each quarterback carries a rating: an exponentially-weighted average of his
-EPA per dropback, read before a game and updated after it. The adjustment
-entering the prediction is the difference between the two starters' ratings.
+**The QB adjustment was the biggest single improvement.** I tested it on
+six different stretches of seasons, each time tuning only on earlier
+years. It helped in all six.
 
-Predicting an unplayed game means guessing who starts, which is inferred from
-the current roster plus last season's attempts — see RESULTS.md, including
-why weeks 17-18 have to be excluded from that inference.
+**Team EPA helped a little, but every time.** Smaller than QB, but it
+also helped in all six test stretches.
 
-Tested across six held-out windows, each tuned on data strictly preceding it:
+**Some ideas looked good once and didn't hold up.**
+- Letting home-field advantage change by era looked like a clear win on
+  2019-2025. Tested across all six stretches, the whole gain came from
+  2019-2021, when home teams won unusually rarely (including the COVID
+  seasons with few or no fans). I didn't keep it.
+- Travel distance: home teams do win more when the away team travels
+  farther, but that's because the same far-away teams make those trips
+  every year, and the ratings already account for how good they are.
+- Teams resting starters after clinching their playoff seed: this effect
+  is real and big, but it only happens in about two games a season. Not
+  enough to tune it reliably, so it's not in the model.
 
-| window    | no QB  | with QB | diff    |
-|-----------|--------|---------|---------|
-| 2004-2009 | 0.6249 | 0.6212  | +0.0037 |
-| 2010-2015 | 0.6265 | 0.6183  | +0.0082 |
-| 2016-2018 | 0.6271 | 0.6206  | +0.0064 |
-| 2019-2021 | 0.6421 | 0.6300  | +0.0121 |
-| 2022-2025 | 0.6339 | 0.6280  | +0.0059 |
+The main lesson: one good test isn't enough. Checking across several time
+periods caught two features that would have looked great if I'd stopped
+early.
 
-Every window positive, with five of six independently selecting nearly the
-same parameters.
+## 2026 season
 
-### Team EPA
+Each week I run `predict.py` and commit the picks before kickoff, so the
+commit timestamps prove they came first. I run two versions side by side,
+with and without team EPA, to see if the backtest difference holds up on
+real games. `score.py` scores them against results and the Vegas line.
 
-Elo updates on who won, scaled by margin of victory. EPA per play measures
-how a team actually moved the ball, which is less noisy — a team that gains
-6.5 yards a play and loses on a late turnover played better than the result
-says. Offence and defence are tracked separately, defence being the
-opponent's offensive EPA in the same game.
+Sixteen games a week is a small sample, so it'll take most of the season
+before the record says much.
 
-Positive in all six windows (+0.0011 to +0.0034 on top of the QB model), with
-all six independently selecting the same scale. Smaller and steadier than the
-QB gain, which is what a refinement looks like next to new information: EPA
-correlates 0.80 with the model's own probability and improves the 20% where
-they disagree.
+## Files
 
-## A feature in between: clinch status
+    data.py        loads game schedules and results (nflverse)
+    features.py    QB and team EPA values for each game
+    elo.py         the model, tuning, testing, Vegas comparison
+    predict.py     this week's predictions
+    score.py       scores saved predictions
+    find_qb.py     helper to look up QB ids for manual starter picks
 
-Teams whose playoff seed can no longer move rest their starters in the
-last few weeks. The market prices it; a rating system cannot see it.
-
-Getting to that sentence took three passes, and the wrong turns are the
-useful part. The first flag scored "nothing at stake", pooling eliminated
-teams with seed-locked teams — opposite effects that cancelled, so the
-residual test came back flat. The second flagged every team that had
-clinched a berth, which buried the effect under 341 team-games of teams
-still fighting for seeding. Only the third — rank frozen in both
-directions — isolates it:
-
-| flag                           | n   | shortfall | t    |
-|--------------------------------|-----|-----------|------|
-| clinched, seed still live      | 341 | +0.0146   | +0.6 |
-| cannot improve, could fall     | 129 | +0.0748   | +1.9 |
-| rank frozen both ways          |  54 | +0.2426   | +3.8 |
-
-Two mechanisms were tested on that population. Docking rating points from
-the frozen team wins four of six windows, and five of six independently
-select 130 points — the only stable parameter any version produced.
-*Excluding* those games from the update instead loses, one of six, which
-settles an older open question: the earlier weeks-17–18 exclusion did not
-fail for being too blunt. Discarding a game costs more signal than the
-rested-starter noise it removes, however precisely it is aimed.
-
-Not adopted. The adjustment is nonzero in 54 games out of 7,278 — about
-two team-games a season — which is enough to measure the effect
-confidently and not enough to calibrate it. `CLINCH_SCALE` in elo.py,
-used by nothing. RESULTS.md has the full case, including what is wrong
-with the evidence: the pre-specified test came back flat and the analysis
-continued anyway, and four flag variants were tried before one looked
-good.
-
-## Features that did not survive the same test
-
-Letting home-field advantage vary by season looked like a clear win: +0.0033
-held out on 2019-2025. Run across the same six windows, the entire gain
-turned out to sit in 2019-2021 — elsewhere the two schemes are within
-+/-0.0017, and on 2016-2018 the rolling version is worse. Not adopted.
-
-Rest and travel were rejected the same way. Travel's raw home-win rate climbs
-cleanly with distance — exactly the pattern the feature predicts — but the
-model residuals are flat. Long trips are made by the same few teams every
-year, so the gradient was team quality, which the ratings already capture.
-
-RESULTS.md has all three analyses, plus a correction: an earlier reading of
-the smoothed data called the home-field dip a permanent collapse, which the
-raw per-season rates do not support.
-
-## Layout
-
-The model is five files. Everything that produced the numbers above lives
-in `research/`, and nothing in the model imports from it — the split is
-deliberate. The EPA extractor used to live in `epa_test.py` and the clinch
-flags in `clinch.py`, so the live forecast depended on the scripts that
-were investigating those features.
-
-    data.py        nflverse schedules, relocated franchises merged
-    features.py    QB values, team EPA, playoff status — everything the
-                   model reads about a game, all leakage-free
-    elo.py         the model: ratings, adjustments, tuning grids,
-                   held-out evaluation, calibration, Vegas benchmark
-    predict.py     forecasts upcoming games, running the QB-only and
-                   theta* models side by side
-    score.py       scores both saved models against results and the line
-    find_qb.py     looks up QB ids for manual starter overrides
-
-    research/qb.py              QB adjustment: tuning + six windows
-    research/epa.py             team EPA: residuals, tuning, six windows
-    research/clinch.py          clinch status, all three passes
-    research/rest_travel.py     rest and travel (both rejected)
-    research/residual_scan.py   every schedule column, same test
-    research/hfa_trend.py       raw home-win rate by season, unsmoothed
-    research/ats.py             against-the-spread evaluation
-
-Each research file takes a subcommand, since several analyses share the
-expensive setup:
-
-    python research/qb.py tune
-    python research/clinch.py residuals
-    python research/epa.py windows
+    research/      the experiments behind the results above, including
+                   the ideas that didn't make it. Full notes in
+                   research/RESULTS.md
 
 ## Running it
 
     pip install nflreadpy pandas numpy scipy
-    python elo.py
+    python elo.py          # tune and evaluate (takes a few minutes)
+    python predict.py 4    # predict week 4
+    python score.py        # score predictions so far
 
-Takes several minutes — the grid searches replay all 7,276 games many times.
+Data comes from [nflverse](https://github.com/nflverse) via `nflreadpy`.

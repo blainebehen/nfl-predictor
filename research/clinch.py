@@ -32,10 +32,11 @@ import numpy as np
 import pandas as pd
 
 from data import load_games
-from elo import (run_elo, season_mask, Accuracy, L, QB_SCALE, QB_ALPHA,
+from elo_experiments import (run_elo, season_mask, Accuracy, L, QB_SCALE, QB_ALPHA,
                  EPA_SCALE, EPA_ALPHA)
-from features import (build_qb_map, team_game_epa, build_status_map,
-                      build_stake_map, build_clinch_map)
+from features import build_qb_map, team_game_epa
+from clinch_features import (build_status_map, build_stake_map,
+                             build_clinch_map)
 
 K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
 

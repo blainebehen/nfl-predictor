@@ -1,15 +1,10 @@
 """
-Look up QB ids for STARTER_OVERRIDES.
+Look up QB player ids for STARTER_OVERRIDES in predict.py.
 
-predict.py picks each team's starter as the rostered QB with the most pass
-attempts in the previous season's REG weeks 1-16. That handles trades and
-signings, but not the case where a backup outthrew the starter because the
-starter was hurt -- San Francisco with M.Jones over B.Purdy, Cincinnati with
-J.Flacco over J.Burrow.
-
-Enter the teams you need to correct, run, and paste the printed block into
-predict.py. Each team's QBs are listed with attempt counts so it is obvious
-who is who.
+predict.py guesses each starter from last season's attempts, which is
+wrong when a backup played a lot because the starter was hurt (like
+Mac Jones over Brock Purdy in SF). List the teams to check in TEAMS, run
+this, and paste the printed block into predict.py.
 """
 import nflreadpy as nfl
 from data import RELOCATED

@@ -41,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 from data import load_games
-from elo import (run_elo, season_mask, Accuracy, L, TEST_START,
+from elo_experiments import (run_elo, season_mask, Accuracy, L, TEST_START,
                  QB_SCALE, QB_ALPHA)
 from features import build_qb_map, team_game_epa
 
