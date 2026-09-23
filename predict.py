@@ -56,6 +56,12 @@ STARTER_OVERRIDES = {
     # 'WAS': '00-0032268',                # Marcus Mariota (227 att)
     'WAS': '00-0039910',                # Jayden Daniels (188 att)
     # 'WAS': '00-0041117',                # Athan Kaliakmanis (0 att)
+    'ATL': '00-0039917',                # Michael Penix Jr. (named Week 3 starter)
+    # 'ATL': '00-0036212',                # Tua Tagovailoa
+    # 'ATL': '00-0033662',                # Cooper Rush
+    'NYG': '00-0031503',                # Jameis Winston (Dart knee injury)
+    # 'NYG': '00-0040691',                # Jaxson Dart
+    # 'SEA': '00-0035704',                # Drew Lock (if Darnold is out)
 }
 
 

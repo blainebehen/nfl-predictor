@@ -97,6 +97,8 @@ commit timestamps prove they came first. I run two versions side by side,
 with and without team EPA, to see if the backtest difference holds up on
 real games. `score.py` scores them against results and the Vegas line.
 
+When the model guesses the wrong starting QB, I log it in STARTERS.md.
+
 Sixteen games a week is a small sample, so it'll take most of the season
 before the record says much.
 
