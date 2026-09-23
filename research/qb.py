@@ -1,30 +1,19 @@
 """
-The quarterback adjustment: tuning and six-window validation.
+Does adding a QB adjustment help, and does it hold up?
 
-    python research/qb.py tune      grid the parameters, in-sample + held out
-    python research/qb.py windows   six held-out windows
+    python research/qb.py tune      tune the QB settings, then test on 2019+
+    python research/qb.py windows   test on six different stretches of seasons
     python research/qb.py           both
 
-Was qb.py and qb_windows.py. Extraction moved to features.py.
+Each QB gets a rating: a running average of his EPA per dropback. The
+adjustment is the difference between the two starters' ratings.
 
-RESULT: adopted. The largest single improvement in the project -- +0.0061
-in-sample, +0.0071 held out, and positive in all six windows, +0.0037 to
-+0.0121. Five of six independently select alpha in {0.01, 0.02} and scale
-in {600, 900}.
+I first tried comparing each starter to his team's usual QB instead (the
+qb_beta setting). Tuning always pushed qb_beta to 0, which makes it the
+same as just using the raw ratings, so I dropped it.
 
-Design note: the original formulation compared each starter to a team
-baseline T, on the reasoning that team Elo already absorbs a franchise's
-average QB, so only the deviation is new information. The data rejected
-it. Tuning drove qb_beta (T's update rate) to zero at every grid floor it
-was given, and at beta = 0 the baseline is a constant that cancels:
-
-    (Q_home - T) - (Q_away - T) = Q_home - Q_away
-
-Dropping T improved both in-sample and held-out loss and removed a
-parameter. The double-counting worry was unfounded: once the adjustment
-enters d, team ratings update against a prediction that already includes
-it, so they settle lower for teams with good quarterbacks. Elo partitions
-the credit on its own.
+Result: it helped in all six test stretches. Biggest improvement in the
+project.
 """
 import sys
 import pathlib
@@ -35,14 +24,12 @@ from data import load_games
 from elo_experiments import run_elo, season_mask, Accuracy, L, TEST_START
 from features import build_qb_map
 
-# theta* for the team model, held fixed while the QB parameters are tuned.
-# A staged search, not a joint one: tuning all five at once is ~20x the
-# runtime over a surface already known to be flat in k and rho.
+# team settings held fixed while tuning the QB settings
 K_STAR, H_STAR, RHO_STAR = 20, 50, 0.50
 
 SCALE_GRID = [0, 100, 200, 400, 600, 900, 1200]
 ALPHA_GRID = [0.003, 0.005, 0.01, 0.02, 0.05, 0.10]
-BETA_GRID = [0.0]        # settled: the team baseline earns nothing
+BETA_GRID = [0.0]        # 0 = raw QB ratings (see above)
 
 WINDOWS = [
     ('2004-2009', 2004, 2009),
@@ -56,10 +43,8 @@ WINDOWS = [
 
 def tune_qb(games, qb_map, min_season=None, max_season=None):
     """
-    Grid over (qb_scale, qb_alpha) with the team parameters fixed.
-
-    qb_scale = 0 is the control: it disables the adjustment entirely, so
-    its row is the no-QB baseline measured on exactly the same games.
+    Try every QB scale and alpha. scale = 0 turns the QB adjustment off,
+    so that row is the no-QB baseline on the same games.
     """
     window = season_mask(games, min_season, max_season)
     results = []
@@ -112,9 +97,8 @@ def tune(games, qb_map):
 
 def windows(games, qb_map):
     """
-    The same check that killed the rolling-H feature. A single held-out
-    window can favour a feature by accident -- rolling H won on 2019-2025
-    and then turned out to win nowhere else.
+    For each stretch of seasons: tune on the years before it, then score
+    it. One test period can get lucky, so I check six.
     """
     E0, S0, _ = run_elo(games, k=K_STAR, H=H_STAR, rho=RHO_STAR, mov=True)
 
@@ -132,9 +116,7 @@ def windows(games, qb_map):
               f'{L(E0[test], S0[test]) - L(Eq[test], Sq[test]):>+8.4f} '
               f'{f"s={scale} a={alpha} b={beta}":>22}')
 
-    print('\nEvery window positive, and the smallest gain exceeds the')
-    print('largest gain rolling H managed anywhere. Parameters replicating')
-    print('across independent tunings is what a real signal looks like.')
+    print('\ndiff > 0 means the QB adjustment helped in that stretch.')
 
 
 if __name__ == '__main__':

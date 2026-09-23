@@ -9,3 +9,6 @@ data.js
 
 # local only -- saved model versions, not on GitHub
 versions/
+
+# local only -- older experiments, kept but not on GitHub
+archive/

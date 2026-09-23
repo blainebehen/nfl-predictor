@@ -111,9 +111,8 @@ before the record says much.
     score.py       scores saved predictions
     find_qb.py     helper to look up QB ids for manual starter picks
 
-    research/      the experiments behind the results above, including
-                   the ideas that didn't make it. Full notes in
-                   research/RESULTS.md
+    research/      the tests behind the results above (see
+                   research/README.md)
 
 ## Running it
 

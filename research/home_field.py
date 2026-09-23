@@ -1,19 +1,12 @@
 """
-Does rolling H beat fixed H in general, or only on 2019-2021?
+Should home-field advantage change over time?
 
-The +0.0033 held-out gain for rolling H was measured on a test window
-(2019-2025) that opens with three anomalous seasons: home-win rates of
-.521/.498/.516 against a .573 baseline for 1999-2018. An adaptive H can
-track that; a constant H fit on earlier data cannot.
+Tested letting it move with the home-win rate of the last few seasons,
+versus keeping it fixed. It looked better when tested on 2019-2025, but
+that's because 2019-2021 had unusually few home wins. Checked across six
+stretches of seasons, it only helped in that one. Kept fixed.
 
-But the raw series shows no trend before 2019 -- just scatter around .573
-with a per-season SE of ~.030. So there may be nothing for a rolling H to
-track most of the time, and the gain may be an artifact of where the test
-window happens to start.
-
-This runs the same comparison over several test windows. For each, both
-schemes are tuned on everything BEFORE the window and scored on it. If
-rolling only wins on 2019+, it is an anomaly-handler, not an improvement.
+Slow: tunes both versions for every stretch (about 10 minutes).
 """
 import sys
 import pathlib
@@ -62,6 +55,4 @@ if __name__ == '__main__':
               f'{f"k={k_f} H={H_f} p={rho_f}":>16} '
               f'{f"k={k_r} w={w_r} p={rho_r}":>16}')
 
-    print('\ndiff > 0 means rolling H won that window.')
-    print('If only the 2019-2021 rows are positive, the gain is an')
-    print('anomaly-handler rather than a general improvement.')
+    print('\ndiff > 0 means the changing home-field version won that stretch.')
