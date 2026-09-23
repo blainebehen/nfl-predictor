@@ -6,8 +6,8 @@ How a game gets predicted:
   2. Take the home team's rating minus the away team's, and add a bonus
      for playing at home. Call that the edge, d.
   3. Add the two adjustments to d:
-       - QB: is this team's starting QB better or worse than who they
-         normally play?
+       - QB: how good is each team's starting QB, based on his recent
+         EPA per dropback?
        - EPA: how efficiently has each team been moving the ball, and
          stopping it, lately?
   4. Turn d into a win probability with the Elo formula.
@@ -35,14 +35,15 @@ RHO_GRID = [0.0, 0.15, 0.33, 0.5, 0.7]
 
 TEST_START = 2019   # hold out 2019 onward to test on
 
-# QB adjustment (tested in research/qb.py)
+# QB adjustment (tested in research/qb.py and research/raw_qb_retune.py)
 QB_SCALE = 600      # rating points per unit of EPA per dropback
 QB_ALPHA = 0.02     # how fast a QB's rating updates
-QB_BETA = 0.03      # how fast a team's "normal QB" level updates
 
-# Team EPA adjustment (tested in research/epa.py)
-EPA_SCALE = 200     # rating points per unit of net EPA per play
-EPA_ALPHA = 0.15    # how fast a team's EPA rating updates
+# Team EPA adjustment. Re-tuned after switching to raw QB ratings
+# (research/raw_qb_retune.py). It barely helps now -- the QB ratings
+# already cover most of it.
+EPA_SCALE = 50      # rating points per unit of net EPA per play
+EPA_ALPHA = 0.25    # how fast a team's EPA rating updates
 
 
 def run_elo(games, k=20, H=50, rho=0.5, mov=True,
@@ -67,7 +68,6 @@ def run_elo(games, k=20, H=50, rho=0.5, mov=True,
 
     use_qb = qb_map is not None and qb_scale != 0.0
     Q = defaultdict(float)      # each QB's rating (EPA per dropback)
-    T = defaultdict(float)      # each team's normal QB level
 
     use_epa = epa_map is not None and epa_scale != 0.0
     OFF, DEF = {}, {}           # each team's offensive / defensive EPA
@@ -84,14 +84,13 @@ def run_elo(games, k=20, H=50, rho=0.5, mov=True,
         # --- predict ---------------------------------------------------
         adj = 0.0
 
-        # QB: only the difference from the team's usual QB matters,
-        # because the team rating already includes their usual QB.
+        # QB: difference between the two starters' ratings
         if use_qb:
             h_qb = qb_map.get((g.game_id, g.home_team))
             a_qb = qb_map.get((g.game_id, g.away_team))
-            dev_h = Q[h_qb[0]] - T[g.home_team] if h_qb else 0.0
-            dev_a = Q[a_qb[0]] - T[g.away_team] if a_qb else 0.0
-            adj = qb_scale * (dev_h - dev_a)
+            q_h = Q[h_qb[0]] if h_qb else 0.0
+            q_a = Q[a_qb[0]] if a_qb else 0.0
+            adj = qb_scale * (q_h - q_a)
 
         # EPA: net = offense EPA minus EPA allowed on defense
         if use_epa:
@@ -122,15 +121,13 @@ def run_elo(games, k=20, H=50, rho=0.5, mov=True,
         R[g.home_team] += k * M * (S - E)
         R[g.away_team] -= k * M * (S - E)
 
-        # Move each QB's rating (and his team's normal level) a little
-        # toward what he did this game.
+        # Move each starter's rating a little toward what he did this game
         if use_qb:
-            for qb, team in ((h_qb, g.home_team), (a_qb, g.away_team)):
+            for qb in (h_qb, a_qb):
                 if qb is None:
                     continue
                 pid, val = qb
                 Q[pid] += qb_alpha * (val - Q[pid])
-                T[team] += QB_BETA * (val - T[team])
 
         # Same idea for each team's offensive and defensive EPA
         if use_epa:

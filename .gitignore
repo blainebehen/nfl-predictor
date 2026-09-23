@@ -6,3 +6,6 @@ __pycache__/
 # local only — dashboard is private, not part of the public repo
 dashboard.html
 data.js
+
+# local only -- saved model versions, not on GitHub
+versions/

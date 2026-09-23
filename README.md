@@ -12,12 +12,12 @@ Every team has a rating, starting at 1500. To predict a game:
 1. Take the home team's rating minus the away team's, plus a bonus for
    home field.
 2. Adjust for the quarterbacks. Each QB has a rating based on his recent
-   EPA per dropback. The model only uses how far a team's starter is from
-   who they *normally* play, since the team rating already includes that.
-   This is what lets it react when a backup has to start.
+   EPA per dropback, and the model adds the difference between the two
+   starters' ratings. This is what lets it react when a backup has to
+   start.
 3. Adjust for team EPA per play, offense and defense. EPA measures how
    well a team actually moved the ball, which is less noisy than the final
-   score.
+   score. (This one turned out to barely matter. See below.)
 4. Convert that to a win probability with the Elo formula:
    `P(home wins) = 1 / (1 + 10^(-edge/400))`.
 
@@ -30,29 +30,28 @@ backtest is out of sample.
 
 ## Results
 
-7,278 games, 1999-2025:
+Every completed game since 1999 (about 7,300):
 
 | model                 | accuracy | log loss |
 |-----------------------|----------|----------|
 | always guess 50%      | 0.500    | 0.693    |
 | always pick home team | 0.563    | —        |
-| Elo + margin of victory | 0.641  | 0.631    |
-| + QB adjustment       | 0.643    | 0.629    |
-| + team EPA            | 0.644    | 0.627    |
+| Elo + margin of victory | 0.640  | 0.631    |
+| + QB adjustment       | 0.646    | 0.625    |
+| + team EPA            | 0.645    | 0.625    |
 | Vegas closing line    | 0.661    | 0.614    |
 
 Log loss is the main score (lower is better). It rewards being confident
 and right, and punishes being confident and wrong, which accuracy doesn't.
 
-The model tunings above were picked using all these games, so they're a
+The settings above were picked using all these games, so they're a
 little optimistic. As a fairer test, I tuned only on 1999-2018 and scored
-2019-2025: log loss 0.640 → 0.634 → 0.632 for the three versions. Same
-order, same improvements.
+2019-2025: log loss 0.637 → 0.630 → 0.630 for the three versions.
 
 The model is also well calibrated: when it says 70%, the home team wins
 about 70% of the time.
 
-It doesn't beat Vegas, and I didn't expect it to. It gets about 80% of the
+It doesn't beat Vegas, and I didn't expect it to. It gets about 85% of the
 way from a coin flip to the Vegas line.
 
 ## What I learned
@@ -61,8 +60,19 @@ way from a coin flip to the Vegas line.
 six different stretches of seasons, each time tuning only on earlier
 years. It helped in all six.
 
-**Team EPA helped a little, but every time.** Smaller than QB, but it
-also helped in all six test stretches.
+**Simpler was better for the QB adjustment.** My first version compared
+each starter to his team's usual QB, figuring the team rating already
+included that. Testing showed the comparison didn't help, so I decided to
+use the raw QB ratings. Later I found that decision had only made it into
+the prediction script, not the model itself, so the backtest was still
+running the version I'd rejected. Fixing it made the QB improvement about
+three times bigger on the full backtest. (research/raw_qb_retune.py)
+
+**Team EPA stopped mattering once the QB fix was in.** With the old QB
+version, EPA helped in all six test stretches. With raw QB ratings it's a
+wash: +0.0005 at best, slightly worse in some. The QB ratings were
+already picking up most of what EPA added. I still track it live to see
+what happens on new games.
 
 **Some ideas looked good once and didn't hold up.**
 - Letting home-field advantage change by era looked like a clear win on

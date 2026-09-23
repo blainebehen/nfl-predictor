@@ -7,8 +7,11 @@ I run two versions side by side and save both, so I can see which one
 actually does better on real games:
 
   E       Elo + QB. This is the model I started the 2026 season with.
-  E_full  Elo + QB + team EPA. Better in the backtest, but that's on past
-          data. The live season is the real test.
+  E_full  Elo + QB + team EPA. Almost identical in the backtest, so the
+          live season is the tiebreaker.
+
+Starting Week 3 of 2026, both use raw QB ratings everywhere (the theta
+column says qb=raw). Earlier weeks were saved with the older version.
 
 Picking the starting QB: for games that haven't happened yet, I don't know
 who will start. So for each team I take the QBs on the current roster and
@@ -221,7 +224,7 @@ if __name__ == '__main__':
     df = pd.DataFrame(rows, columns=COLUMNS)
     df.insert(0, 'week', week)
     df.insert(0, 'season', SEASON)
-    df['theta'] = (f'k={K},H={H},rho={RHO},'
+    df['theta'] = (f'k={K},H={H},rho={RHO},qb=raw,'
                    f'qb_scale={QB_SCALE},qb_alpha={QB_ALPHA},'
                    f'epa_scale={EPA_SCALE},epa_alpha={EPA_ALPHA}')
 
