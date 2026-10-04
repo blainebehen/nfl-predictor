@@ -67,6 +67,13 @@ STARTER_OVERRIDES = {
 }
 
 
+# player_id -> why he cannot play, filled in by infer_starters. Kept at
+# module level so the manual-override check can see it: an override beats
+# every rule here, including the injury report, which makes a stale one
+# actively dangerous rather than merely useless.
+RULED_OUT = {}
+
+
 def infer_starters(season, last_season, week=1):
     """
     Each team's likely starter, ranked on the most relevant attempts
@@ -91,6 +98,19 @@ def infer_starters(season, last_season, week=1):
 
     Falls back to last season per team, not globally -- a team whose QBs
     have no attempts yet this season still gets a sensible guess.
+
+    THE INJURY REPORT OVERRIDES BOTH. No rule built on past attempts can
+    see a quarterback who is ruled out on Friday, and that is the single
+    biggest source of wrong starters: in 2026 week 4 alone the report
+    listed Mayfield (thumb), Williams (hamstring) and Daniels (elbow) as
+    Out, and attempts alone would have started two of the three. Anyone
+    listed Out or Doubtful is dropped from the pool before ranking;
+    Questionable is kept but flagged, since those usually play.
+
+    The report fills in through the week -- practice participation
+    midweek, firm designations Friday -- so running early gets a thinner
+    report. The count of statuses found is printed so a thin one is
+    visible rather than silently trusted.
     """
     # QBs on each roster right now
     r = nfl.load_rosters([season]).to_pandas()
@@ -98,6 +118,41 @@ def infer_starters(season, last_season, week=1):
         r = r[r.week == r.week.max()]           # latest weekly snapshot
     qbs = r[(r.position == 'QB') & (r.status == 'ACT')].copy()
     qbs['team'] = qbs.team.replace(RELOCATED)
+
+    # --- injury report: who cannot play this week ---------------------
+    # Also record the roster's own INA flag: a quarterback listed
+    # inactive never reaches the ranking because of the ACT filter above,
+    # so without this he would look available to an override.
+    RULED_OUT.clear()
+    for r_ in r[(r.position == 'QB') & (r.status != 'ACT')].itertuples():
+        RULED_OUT[r_.gsis_id] = f'roster status {r_.status}'
+
+    out, questionable = set(), {}
+    try:
+        inj = nfl.load_injuries([season]).to_pandas()
+        inj = inj[(inj.week == week) & (inj.position == 'QB')
+                  & inj.report_status.notna()]
+        for r_ in inj.itertuples():
+            if r_.report_status in ('Out', 'Doubtful'):
+                out.add(r_.gsis_id)
+                RULED_OUT[r_.gsis_id] = (
+                    f'{r_.report_status}'
+                    + (f' ({r_.report_primary_injury})'
+                       if pd.notna(r_.report_primary_injury) else ''))
+            elif r_.report_status == 'Questionable':
+                questionable[r_.gsis_id] = r_.report_primary_injury
+        if len(inj):
+            print(f'Injury report, week {week}: {len(out)} QBs out or '
+                  f'doubtful, {len(questionable)} questionable.')
+            for r_ in inj[inj.report_status.isin(('Out', 'Doubtful'))].itertuples():
+                print(f'  {r_.team}: {r_.full_name} — {r_.report_status}'
+                      f'{" (" + str(r_.report_primary_injury) + ")" if pd.notna(r_.report_primary_injury) else ""}')
+        else:
+            print(f'No week-{week} QB injury report yet — starters rest on '
+                  f'attempts alone. Rerun closer to kickoff.')
+    except Exception as e:
+        print(f'Could not read the injury report ({type(e).__name__}); '
+              f'starters rest on attempts alone.')
 
     def attempts(seasons, max_week=None):
         ps = nfl.load_player_stats(seasons).to_pandas()
@@ -132,9 +187,23 @@ def infer_starters(season, last_season, week=1):
                           if recent is not None else 0.0)
 
     starters, notes = {}, {}
-    names = dict(zip(qbs.gsis_id, qbs.full_name))
+    # every QB on the roster, not just the active ones, so a warning
+    # about an inactive player prints his name and not an id
+    names = dict(zip(r[r.position == 'QB'].gsis_id,
+                     r[r.position == 'QB'].full_name))
+
+    def names_of(frame):
+        return [names.get(i, i) for i in frame.gsis_id]
 
     for team, grp in qbs.groupby('team'):
+        # drop anyone ruled out, unless that would empty the team
+        avail = grp[~grp.gsis_id.isin(out)]
+        if len(avail):
+            if len(avail) < len(grp):
+                gone = ', '.join(names_of(grp[grp.gsis_id.isin(out)]))
+                notes.setdefault(team, f'{gone} ruled out — picking behind him')
+            grp = avail
+
         if grp.cur_att.sum() > 0:
             # most recent game first, then who threw most in it
             ranked = grp.sort_values(['last_wk', 'last_wk_att'],
@@ -156,6 +225,12 @@ def infer_starters(season, last_season, week=1):
             starters[team] = pick.gsis_id
             if pick.last_att == 0:
                 notes[team] = 'no attempts anywhere — guess'
+
+    for team, pid in starters.items():
+        if pid in questionable:
+            why = questionable[pid]
+            notes.setdefault(team, f'listed Questionable'
+                             + (f' ({why})' if pd.notna(why) else ''))
 
     if notes:
         print('Eyeball these — override in STARTER_OVERRIDES if wrong:')
@@ -291,6 +366,12 @@ def predict_week(R_qb, R_full, Q, net_epa, starters, names, season, week,
     for g in upcoming.itertuples():
         qb_h = STARTER_OVERRIDES.get(g.home_team, starters.get(g.home_team))
         qb_a = STARTER_OVERRIDES.get(g.away_team, starters.get(g.away_team))
+
+        for team, pid in ((g.home_team, qb_h), (g.away_team, qb_a)):
+            if team in STARTER_OVERRIDES and pid in RULED_OUT:
+                print(f'  !! {team}: override names '
+                      f'{names.get(pid, pid)}, who is {RULED_OUT[pid]}. '
+                      f'Remove it from STARTER_OVERRIDES.')
 
         qb_adj = QB_SCALE * (Q.get(qb_h, 0.0) - Q.get(qb_a, 0.0))
         epa_adj = EPA_SCALE * (net_epa.get(g.home_team, 0.0)

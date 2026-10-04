@@ -18,8 +18,11 @@ it's clear which predictions were made with the wrong quarterback.
 | 2 | SEA | Sam Darnold | Drew Lock | Darnold out, oblique injury |
 | 2 | NYG | Jaxson Dart | Jameis Winston | Dart started, hurt early (5 attempts, knee) |
 
+| 4 | TB | Baker Mayfield | *(pending)* | ruled Out Friday (thumb); forecast was committed Sunday morning without checking the report |
+
 Week 1: 1 real miss (ATL) plus 2 in-game injuries.
 Week 2: 3 real misses (ATL, MIN, SEA) plus 1 in-game injury.
+Week 4: 1 real miss (TB) — and it was avoidable.
 
 ## Overrides set before each week
 
@@ -31,3 +34,20 @@ Week 2: 3 real misses (ATL, MIN, SEA) plus 1 in-game injury.
 
 Lesson: check injury news for every team before running predict.py, not
 just the teams I already had overrides for.
+
+## Reading the injury report (from Week 5)
+
+Every miss above except the in-game injuries was listed on the official
+injury report before kickoff. Week 4 is the clearest case: Mayfield
+(thumb), Caleb Williams (hamstring) and Jayden Daniels (elbow) were all
+Out, and attempts alone would have started two of them.
+
+predict.py now loads `nfl.load_injuries()` for the week and drops anyone
+Out or Doubtful before ranking, flags Questionable, and refuses to let a
+stale STARTER_OVERRIDES entry reinstate a quarterback who cannot play —
+the WAS override was pointing at Jayden Daniels while he was ruled out.
+
+Caveat: the report fills in through the week. Practice participation
+appears midweek, firm Out/Questionable designations land Friday. Running
+Tuesday gets a thinner report than running Saturday, so the script prints
+how many statuses it found.
