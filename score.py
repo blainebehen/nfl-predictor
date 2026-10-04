@@ -29,9 +29,24 @@ def load_predictions(path='predictions_2026.csv'):
 
 
 def attach_results(preds):
-    """Join actual outcomes onto predictions. Unplayed games get NaN."""
+    """
+    Join actual outcomes onto predictions. Unplayed games get NaN.
+
+    Also pulls spread_line fresh, as `close`. The `spread` saved in the
+    CSV is the line that existed when the forecast was made, early in the
+    week; by kickoff it has moved. Over 2026 weeks 1-3 the two differed
+    on 31 of 48 games by an average of 0.87 points and up to 4.0, and
+    scoring the market on the stale number understated it -- L 0.6704
+    against 0.6500 on the real close.
+
+    Both are kept because they answer different questions. The CLOSE is
+    the benchmark: RESULTS.md measures the model against the closing
+    line, so the live track record has to use the same yardstick. The
+    STORED line is what was actually available to bet, so it is the right
+    one for the ATS edge below.
+    """
     sched = nfl.load_schedules().to_pandas()
-    cols = ['season', 'week', 'away_team', 'home_team', 'result']
+    cols = ['season', 'week', 'away_team', 'home_team', 'result', 'spread_line']
 
     merged = preds.merge(
         sched[cols],
@@ -39,6 +54,7 @@ def attach_results(preds):
         right_on=['season', 'week', 'away_team', 'home_team'],
         how='left',
     )
+    merged = merged.rename(columns={'spread_line': 'close'})
     return merged.drop(columns=['away_team', 'home_team'])
 
 
@@ -73,7 +89,7 @@ def score_block(df, label):
         note = '' if len(sub) == n else f'  [{len(sub)} of {n} games]'
         print(f'  {name:<16} Acc {acc(E, S):.4f}  L {ll(E, S):.4f}{note}')
 
-    V = norm.cdf(df.spread.values / SPREAD_SD)
+    V = norm.cdf(df.close.values / SPREAD_SD)
     ok = ~np.isnan(V)
     if ok.any():
         S = outcomes(df)
@@ -125,6 +141,7 @@ if __name__ == '__main__':
 
     # Games where my model disagrees with Vegas by 3+ points. If I have
     # any edge on the betting line, it should show up here.
+    # the stored line, not the close: this is what could have been bet
     has_line = played.spread.notna()
     sub = played[has_line]
     if len(sub):
