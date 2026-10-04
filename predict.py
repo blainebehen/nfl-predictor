@@ -22,6 +22,8 @@ me set a starter by hand. Always check the starters column in the output.
 """
 import sys
 from collections import defaultdict
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import nflreadpy as nfl
@@ -216,6 +218,24 @@ def current_state(last_season=None, week=1):
     return R_qb, R_full, dict(Q), net_epa, starters, names
 
 
+ET = ZoneInfo('America/New_York')
+
+
+def _kickoff(sched):
+    """
+    Scheduled kickoff as a timezone-aware instant, one per row.
+
+    nflverse gives gameday as a date and gametime as HH:MM Eastern.
+    A missing gametime becomes NaT, which compares false against the
+    clock, so such a game is only caught by its result -- the old
+    behaviour, and the safe direction is to keep forecasting it rather
+    than silently drop it.
+    """
+    stamp = sched.gameday.astype(str) + ' ' + sched.gametime.astype(str)
+    return pd.to_datetime(stamp, errors='coerce').dt.tz_localize(
+        ET, ambiguous='NaT', nonexistent='NaT')
+
+
 def predict_week(R_qb, R_full, Q, net_epa, starters, names, season, week,
                  revert=True):
     """
@@ -230,13 +250,38 @@ def predict_week(R_qb, R_full, Q, net_epa, starters, names, season, week,
     # Never forecast a game that has already kicked off. A week picked up
     # late -- after its Thursday game, say -- gets forecasts for the games
     # still ahead and simply has no row for the one that is gone. Writing
-    # one now would be a prediction made with knowledge of the result,
-    # which is the one thing this file exists to avoid.
-    done = int(upcoming.result.notna().sum())
-    if done:
-        print(f'{done} of {len(upcoming)} week-{week} games already played '
-              f'— forecasting only the {len(upcoming) - done} still ahead.')
-        upcoming = upcoming[upcoming.result.isna()]
+    # one now would be a prediction made after the fact, which is the one
+    # thing this file exists to avoid.
+    #
+    # The gate is SCHEDULED KICKOFF against the clock, not whether a
+    # result has appeared. Results lag: on 4 Oct 2026 the London game
+    # kicked off 06:30 PT and had finished, but nflverse still showed no
+    # result, so a result-based gate let it through and it had to be
+    # removed from the record afterwards. Kickoff time does not lag.
+    upcoming = upcoming.assign(kick=_kickoff(upcoming))
+    now = datetime.now(ET)
+
+    started = (upcoming.kick <= now) | upcoming.result.notna()
+    if started.any():
+        for g in upcoming[started].itertuples():
+            when = ('result already in' if pd.notna(g.result)
+                    else f'kicked off {g.kick.strftime("%a %H:%M %Z")}')
+            print(f'  skipping {g.away_team} at {g.home_team} — {when}')
+        print(f'{int(started.sum())} of {len(upcoming)} week-{week} games '
+              f'already under way — forecasting the '
+              f'{int((~started).sum())} still ahead.')
+        upcoming = upcoming[~started]
+
+    # A forecast committed minutes before kickoff is technically clean and
+    # proves nothing to anyone reading the git log later. Say so now,
+    # while there is still time to care.
+    soon = upcoming[upcoming.kick <= now + timedelta(hours=1)]
+    if len(soon):
+        first = soon.kick.min()
+        print(f'\nWARNING: {len(soon)} of these kick off within the hour '
+              f'(first at {first.strftime("%a %H:%M %Z")}).')
+        print('Commit now and the timestamp barely precedes kickoff. Run')
+        print('this Tuesday or Wednesday instead.\n')
 
     if revert:
         R_qb = {t: 1500 + (1 - RHO) * (r - 1500) for t, r in R_qb.items()}

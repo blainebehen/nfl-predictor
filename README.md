@@ -102,6 +102,19 @@ When the model guesses the wrong starting QB, I log it in STARTERS.md.
 Sixteen games a week is a small sample, so it'll take most of the season
 before the record says much.
 
+**Week 4 has a timing problem, so it gets an asterisk.** I ran it Sunday
+morning and committed at 10:03 PT, three minutes after the 10:00 games
+started. Nothing was knowable three minutes in and I didn't look, but the
+commit no longer proves the picks came first, which is the whole point of
+committing them. Those eight games stay in with this note attached.
+
+The London game that morning is worse: it kicked off at 6:30 PT and was
+already over. The script let it through because it gated on whether a
+result had been *posted*, and nflverse hadn't posted one yet. I removed
+that row — Week 4 has 14 forecasts, not 15. The script now gates on
+scheduled kickoff instead of posted results, and warns if anything in the
+week starts within the hour. Lesson: run it Tuesday.
+
 ## Files
 
     data.py        loads game schedules and results (nflverse)

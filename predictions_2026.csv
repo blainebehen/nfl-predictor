@@ -47,18 +47,17 @@ season,week,away,home,E,spread,theta,qb_adj,away_qb,home_qb,E_full,epa_adj
 2026,3,LV,NO,0.5966655669887699,3.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-22.39587488486097,Kirk Cousins,Tyler Shough,0.6062352814080737,8.706686169557495
 2026,3,LA,DEN,0.538833568683845,-2.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-48.19159367138691,Matthew Stafford,Bo Nix,0.5303704724241846,-6.204434986074054
 2026,3,PHI,CHI,0.4863152256839648,-4.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-72.8945097389492,Jalen Hurts,Caleb Williams,0.4885271931843469,-0.7955516920110789
-2026,4,IND,WAS,0.5868605516750559,-4.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",21.058819844200162,Daniel Jones,J.Daniels,0.5914335619881925,1.4610073939492465
 2026,4,TEN,BAL,0.8829097635553197,11.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",175.86138023740833,Cam Ward,Lamar Jackson,0.8858908858461495,11.76615326709442
 2026,4,NE,BUF,0.7350175949076923,7.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",108.3572937840396,Drake Maye,Josh Allen,0.7406578913431474,4.408392336858862
-2026,4,NYJ,CHI,0.7739331394757135,3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",11.157058262661433,Geno Smith,Case Keenum,0.7801733215052502,12.624055705728738
+2026,4,NYJ,CHI,0.7739331394757135,3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",11.157058262661431,Geno Smith,Case Keenum,0.7801733215052502,12.624055705728738
 2026,4,JAX,CIN,0.4972628525761449,2.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",22.195652595910488,Trevor Lawrence,Joe Burrow,0.4898839356337047,-9.278936300984054
 2026,4,DAL,HOU,0.5811852109834427,3.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-79.3502981608908,Dak Prescott,C.J. Stroud,0.5794478827670038,1.282153975932119
 2026,4,ARI,NYG,0.6420239570396852,-2.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",34.24611320943097,Jacoby Brissett,Jameis Winston,0.6463882617717388,6.550211293667693
-2026,4,LA,PHI,0.5410016576933507,-3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",14.906936567872853,Matthew Stafford,Jalen Hurts,0.5298780153248976,-6.8771043033326595
-2026,4,GB,TB,0.5012289299785331,-3.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-37.993420027328284,Jordan Love,Baker Mayfield,0.5098997742863844,4.620535576477501
-2026,4,MIA,MIN,0.8409189970245362,10.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",42.350876579888755,Malik Willis,Kyler Murray,0.8511300398703597,16.35906486206212
-2026,4,KC,LV,0.4159641930242014,-4.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-82.43861981552084,Patrick Mahomes,Kirk Cousins,0.41194504916837765,-6.889491566624062
-2026,4,LAC,SEA,0.8226372411659357,7.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-9.473442309902739,Justin Herbert,Sam Darnold,0.8343444737029942,16.499690275485886
+2026,4,LA,PHI,0.5410016576933507,-3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",14.906936567872853,Matthew Stafford,Jalen Hurts,0.5298780153248976,-6.87710430333266
+2026,4,GB,TB,0.5012289299785331,-3.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-37.99342002732829,Jordan Love,Baker Mayfield,0.5098997742863844,4.620535576477501
+2026,4,MIA,MIN,0.8409189970245362,10.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",42.35087657988876,Malik Willis,Kyler Murray,0.8511300398703597,16.35906486206212
+2026,4,KC,LV,0.4159641930242014,-4.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-82.43861981552084,Patrick Mahomes,Kirk Cousins,0.4119450491683776,-6.889491566624062
+2026,4,LAC,SEA,0.8226372411659357,7.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-9.47344230990274,Justin Herbert,Sam Darnold,0.8343444737029942,16.499690275485886
 2026,4,DEN,SF,0.6870660175406665,3.0,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",86.17801921134189,Bo Nix,Brock Purdy,0.6997998932484814,8.666178838674247
-2026,4,DET,CAR,0.37320823661888186,-3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-114.81899586744072,Jared Goff,Bryce Young,0.3775322554520208,-0.3715890540499469
+2026,4,DET,CAR,0.3732082366188818,-3.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-114.81899586744072,Jared Goff,Bryce Young,0.3775322554520208,-0.3715890540499469
 2026,4,ATL,NO,0.5576382359416578,1.5,"k=20,H=50,rho=0.5,qb=raw,qb_scale=600,qb_alpha=0.02,epa_scale=50,epa_alpha=0.25",-7.963055104132395,Michael Penix Jr.,Tyler Shough,0.565295193829135,5.1637932312004
