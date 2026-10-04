@@ -65,8 +65,31 @@ STARTER_OVERRIDES = {
 }
 
 
-def infer_starters(season, last_season):
-    """Each team's likely starter: rostered QB with the most attempts last season."""
+def infer_starters(season, last_season, week=1):
+    """
+    Each team's likely starter, ranked on the most relevant attempts
+    available.
+
+    In week 1 the only signal is last season, weeks 1-16 (17-18 excluded
+    because a team with its seed locked rests its starter, which once put
+    C.Oladokun under centre for Kansas City).
+
+    From week 2 on the signal is RECENCY, not the season total: whoever
+    threw most in his team's most recent game. Cumulative attempts look
+    like the sturdier statistic and are wrong mid-season, because a
+    quarterback who took over in week 3 has not yet outthrown the man he
+    replaced. Checked against 2026 week 4, the cumulative rule picked
+    Rush over Penix, Williams over Keenum, Wentz over Murray and Lock
+    over Darnold -- wrong on all four, and each one needed a manual
+    override. Recency gets all four right.
+
+    The inverse error is a one-week fill-in becoming the pick after the
+    starter returns, so a team whose recent starter trails the season
+    leader by a wide margin is flagged rather than silently trusted.
+
+    Falls back to last season per team, not globally -- a team whose QBs
+    have no attempts yet this season still gets a sensible guess.
+    """
     # QBs on each roster right now
     r = nfl.load_rosters([season]).to_pandas()
     if 'week' in r.columns and r.week.notna().any():
@@ -74,31 +97,73 @@ def infer_starters(season, last_season):
     qbs = r[(r.position == 'QB') & (r.status == 'ACT')].copy()
     qbs['team'] = qbs.team.replace(RELOCATED)
 
-    # their pass attempts last season (for any team), weeks 1-16
-    ps = nfl.load_player_stats([last_season]).to_pandas()
-    prior = ps[(ps.position == 'QB') & (ps.attempts > 0)
-               & (ps.season_type == 'REG') & (ps.week <= 16)]
-    att = prior.groupby('player_id').attempts.sum()
+    def attempts(seasons, max_week=None):
+        ps = nfl.load_player_stats(seasons).to_pandas()
+        m = ((ps.position == 'QB') & (ps.attempts > 0)
+             & (ps.season_type == 'REG'))
+        if max_week is not None:
+            m &= ps.week <= max_week
+        return ps[m]
 
-    qbs['prior_att'] = qbs.gsis_id.map(att).fillna(0)
+    prior = attempts([last_season], max_week=16)
+    last_att = prior.groupby('player_id').attempts.sum()
 
-    top = (qbs.sort_values('prior_att', ascending=False)
-              .groupby('team', as_index=False).first())
+    cur = attempts([season], max_week=week - 1) if week > 1 else None
+    cur_att = (cur.groupby('player_id').attempts.sum()
+               if cur is not None and len(cur) else None)
 
-    starters = dict(zip(top.team, top.gsis_id))
+    # most recent week each QB threw, and how much he threw in it
+    if cur is not None and len(cur):
+        recent = (cur.sort_values(['week', 'attempts'])
+                     .groupby('player_id').last()[['week', 'attempts']]
+                     .rename(columns={'week': 'last_wk',
+                                      'attempts': 'last_wk_att'}))
+    else:
+        recent = None
+
+    qbs['last_att'] = qbs.gsis_id.map(last_att).fillna(0)
+    qbs['cur_att'] = (qbs.gsis_id.map(cur_att).fillna(0)
+                      if cur_att is not None else 0.0)
+    qbs['last_wk'] = (qbs.gsis_id.map(recent.last_wk).fillna(0)
+                      if recent is not None else 0.0)
+    qbs['last_wk_att'] = (qbs.gsis_id.map(recent.last_wk_att).fillna(0)
+                          if recent is not None else 0.0)
+
+    starters, notes = {}, {}
     names = dict(zip(qbs.gsis_id, qbs.full_name))
-    unproven = {t: names.get(p, p) for t, p in starters.items()
-                if top.set_index('team').prior_att.get(t, 0) == 0}
 
-    if unproven:
-        print('No prior attempts, so these are guesses — override if wrong:')
-        for t, n in sorted(unproven.items()):
-            print(f'  {t}: {n}')
+    for team, grp in qbs.groupby('team'):
+        if grp.cur_att.sum() > 0:
+            # most recent game first, then who threw most in it
+            ranked = grp.sort_values(['last_wk', 'last_wk_att'],
+                                     ascending=False)
+            pick = ranked.iloc[0]
+            starters[team] = pick.gsis_id
+
+            leader = grp.sort_values('cur_att', ascending=False).iloc[0]
+            if (leader.gsis_id != pick.gsis_id
+                    and leader.cur_att > 2 * pick.cur_att):
+                notes[team] = (
+                    f'started wk {int(pick.last_wk)} but has only '
+                    f'{int(pick.cur_att)} attempts this season against '
+                    f'{names.get(leader.gsis_id, "?")}\'s '
+                    f'{int(leader.cur_att)} — possible fill-in')
+        else:
+            ranked = grp.sort_values('last_att', ascending=False)
+            pick = ranked.iloc[0]
+            starters[team] = pick.gsis_id
+            if pick.last_att == 0:
+                notes[team] = 'no attempts anywhere — guess'
+
+    if notes:
+        print('Eyeball these — override in STARTER_OVERRIDES if wrong:')
+        for t, why in sorted(notes.items()):
+            print(f'  {t}: {names.get(starters[t], starters[t])} — {why}')
 
     return starters, names
 
 
-def current_state(last_season=None):
+def current_state(last_season=None, week=1):
     """
     Replay every completed game to get where things stand now: team
     ratings for both models, QB ratings, team EPA, likely starters,
@@ -137,7 +202,7 @@ def current_state(last_season=None):
                 OFF[team] = OFF.get(team, o) + EPA_ALPHA * (o - OFF.get(team, o))
                 DEF[team] = DEF.get(team, d) + EPA_ALPHA * (d - DEF.get(team, d))
 
-    starters, names = infer_starters(SEASON, last_season)
+    starters, names = infer_starters(SEASON, last_season, week=week)
 
     # names for anyone not on a current roster
     stat_names = (nfl.load_player_stats([last_season]).to_pandas()
@@ -161,6 +226,17 @@ def predict_week(R_qb, R_full, Q, net_epa, starters, names, season, week,
     """
     sched = nfl.load_schedules().to_pandas()
     upcoming = sched[(sched.season == season) & (sched.week == week)]
+
+    # Never forecast a game that has already kicked off. A week picked up
+    # late -- after its Thursday game, say -- gets forecasts for the games
+    # still ahead and simply has no row for the one that is gone. Writing
+    # one now would be a prediction made with knowledge of the result,
+    # which is the one thing this file exists to avoid.
+    done = int(upcoming.result.notna().sum())
+    if done:
+        print(f'{done} of {len(upcoming)} week-{week} games already played '
+              f'— forecasting only the {len(upcoming) - done} still ahead.')
+        upcoming = upcoming[upcoming.result.isna()]
 
     if revert:
         R_qb = {t: 1500 + (1 - RHO) * (r - 1500) for t, r in R_qb.items()}
@@ -195,7 +271,7 @@ COLUMNS = ['away', 'home', 'E', 'E_full', 'spread', 'qb_adj', 'epa_adj',
 if __name__ == '__main__':
     week = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
-    R_qb, R_full, Q, net_epa, starters, names = current_state()
+    R_qb, R_full, Q, net_epa, starters, names = current_state(week=week)
 
     # shrink toward 1500 only if no game this season has been played yet
     played = load_games()
